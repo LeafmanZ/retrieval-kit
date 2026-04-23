@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retrieval-kit"
+version = "1.0.0"
+description = "RAG backend powered by AWS Bedrock Knowledge Bases"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3",
+    "flask",
+    "python-dotenv",
+    "werkzeug",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+retrieval_kit = ["templates/**/*", "static/**/*", "attributes.csv"]

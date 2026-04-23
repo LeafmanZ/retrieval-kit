@@ -1,0 +1,10 @@
+attribute_name,description,category
+page-view:documentation,Access to documentation page,page-view
+documentation:view,View documents,action
+documentation:upload,Upload new documents,action
+documentation:download,Download documents,action
+documentation:delete,Delete documents,action
+documentation:chat,Use AI chat and search,action
+documentation:retry,Retry failed document conversions,action
+documentation:manage-orphans,Delete orphaned documents,action
+documentation:view-stats,View document stats and sync status,action

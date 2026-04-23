@@ -1,0 +1,92 @@
+/* --- UNIVERSAL MUTED SCROLLBAR STYLING --- */
+
+/* Add these variables to your :root for consistency */
+:root {
+    --scrollbar-thumb-color: #fff;
+    --scrollbar-thumb-hover-color: #fff;
+    --glass-bg-scrollbar: rgba(22, 28, 41, 0.5);
+}
+
+/* This targets the scrollbar itself for all elements in WebKit browsers */
+*::-webkit-scrollbar {
+    width: 8px;
+}
+
+/* This hides the increment/decrement buttons (arrows) */
+*::-webkit-scrollbar-button {
+    display: none;
+}
+
+/* This styles the track for all elements */
+*::-webkit-scrollbar-track {
+    background: var(--glass-bg-scrollbar); /* Glassy background */
+    backdrop-filter: blur(5px);
+}
+
+/* This styles the draggable thumb */
+*::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-color);
+    border-radius: 10px;
+}
+
+/* This changes the thumb to cyan on hover */
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover-color);
+}
+
+/* Styles for Firefox scrollbar using theme colors */
+* {
+    /* Firefox scrollbar styling */
+    scrollbar-width: thin;
+    /* Note: Firefox doesn't support a separate hover color via this property */
+    scrollbar-color: var(--scrollbar-thumb-color) var(--glass-bg-scrollbar); /* thumb-color track-color */
+}
+
+
+/* --- SCROLLBAR EXCEPTION FOR WEATHER ALERT TOOLTIP (Updated Colors) --- */
+#weather-tooltip .alerts-container {
+    scrollbar-color: var(--scrollbar-thumb-color) rgba(22, 28, 41, 0.25);
+}
+#weather-tooltip .alerts-container::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-color);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+#weather-tooltip .alerts-container::-webkit-scrollbar-track {
+    background: rgba(22, 28, 41, 0.25);
+}
+#weather-tooltip .alerts-container::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover-color);
+}
+
+
+/* --- NAVBAR SCROLLBAR (Updated Colors) --- */
+
+/* 1. Set overflow and flip direction to move scrollbar to the left */
+.sidebar-wrapper {
+    overflow-y: auto; /* Show scrollbar only when needed */
+    direction: rtl;   /* Move scrollbar to the left side */
+
+    /* 2. Firefox scrollbar override - UPDATED to muted white */
+    scrollbar-color: var(--scrollbar-thumb-color) var(--glass-bg-scrollbar);
+}
+
+/* 3. Reset the direction for the content inside the navbar */
+.sidebar-wrapper .sidebar {
+    direction: ltr; /* Ensures nav items remain left-aligned */
+}
+
+/* 4. WebKit scrollbar thumb override - UPDATED to muted white */
+.sidebar-wrapper::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb-color);
+}
+
+/* 5. WebKit scrollbar hover override - UPDATED to muted cyan */
+.sidebar-wrapper::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover-color);
+}
+
+/* Using the universal track style */
+.sidebar-wrapper::-webkit-scrollbar-track {
+    background: var(--glass-bg-scrollbar);
+    backdrop-filter: blur(5px);
+}

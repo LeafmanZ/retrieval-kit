@@ -691,6 +691,17 @@
 
 <script>
 const RK_API = '{{ api_base }}';
+const RK_PERMS = {
+  view:           {{ 'true' if user_attrs is none or 'documentation:view' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  upload:         {{ 'true' if user_attrs is none or 'documentation:upload' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  delete:         {{ 'true' if user_attrs is none or 'documentation:delete' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  chat:           {{ 'true' if user_attrs is none or 'documentation:chat' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  search:         {{ 'true' if user_attrs is none or 'documentation:search' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  retry:          {{ 'true' if user_attrs is none or 'documentation:retry' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  manageOrphans:  {{ 'true' if user_attrs is none or 'documentation:manage-orphans' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  viewStats:      {{ 'true' if user_attrs is none or 'documentation:view-stats' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  viewIngestion:  {{ 'true' if user_attrs is none or 'documentation:view-ingestion' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+};
 const fileInput = document.getElementById('file-input');
 const docsSection = document.getElementById('docs-section');
 const results = document.getElementById('results');
@@ -835,12 +846,12 @@ function uploadFile(file) {
     try {
       const resp = JSON.parse(xhr.responseText);
       if (xhr.status === 200) {
-        if (resp.ingestion_job_id) {
+        if (resp.ingestion_job_id && RK_PERMS.viewIngestion) {
           setProgress(id, 90, 'syncing', 'Syncing knowledge base...');
           pollIngestion(id, resp.ingestion_job_id);
         } else {
           setProgress(id, 95, 'syncing', 'Uploaded — sync skipped');
-          setTimeout(() => { setProgress(id, 100, 'done', 'Uploaded'); fadeUpload(id); loadDocuments(); }, 1000);
+          setTimeout(() => { setProgress(id, 100, 'done', 'Uploaded'); fadeUpload(id); if (RK_PERMS.view) loadDocuments(); }, 1000);
         }
       } else {
         setProgress(id, 100, 'error', resp.error || `Upload failed (${xhr.status})`);
@@ -890,7 +901,7 @@ function pollIngestion(uploadId, jobId) {
         } else {
           setProgress(uploadId, 100, 'done', msg); fadeUpload(uploadId);
         }
-        loadDocuments();
+        if (RK_PERMS.view) loadDocuments();
       } else if (data.status === 'FAILED') {
         clearInterval(poll);
         const reason = data.failure_reasons.length ? data.failure_reasons[0] : 'Ingestion failed';
@@ -1048,12 +1059,12 @@ function renderDocsPage() {
       <span class="doc-icon">${icon}</span>
       <div class="doc-info">
         <div class="doc-name" title="${doc.key}">${doc.key}</div>
-        <div class="doc-meta"><span class="doc-type-badge">${ext}</span>${doc.converted ? '<span class="doc-kb-badge converted"><i class="fa-solid fa-file-pdf"></i> PDF</span>' : ''}${doc.in_kb ? '<span class="doc-kb-badge in-kb"><i class="fa-solid fa-check"></i> KB</span>' : `<span class="doc-kb-badge not-in-kb" title="Retry convert" onclick="retryConvert('${doc.key.replace(/'/g, "\\'")}')"><span class="default-label"><i class="fa-solid fa-xmark"></i> KB</span><span class="retry-label"><i class="fa-solid fa-arrow-rotate-right"></i> Retry</span></span>`}${formatSize(doc.size)} · ${timeAgo(doc.last_modified)}</div>
+        <div class="doc-meta"><span class="doc-type-badge">${ext}</span>${doc.converted ? '<span class="doc-kb-badge converted"><i class="fa-solid fa-file-pdf"></i> PDF</span>' : ''}${doc.in_kb ? '<span class="doc-kb-badge in-kb"><i class="fa-solid fa-check"></i> KB</span>' : (RK_PERMS.retry ? `<span class="doc-kb-badge not-in-kb" title="Retry convert" onclick="retryConvert('${doc.key.replace(/'/g, "\\'")}')"><span class="default-label"><i class="fa-solid fa-xmark"></i> KB</span><span class="retry-label"><i class="fa-solid fa-arrow-rotate-right"></i> Retry</span></span>` : '<span class="doc-kb-badge not-in-kb"><i class="fa-solid fa-xmark"></i> KB</span>')}${formatSize(doc.size)} · ${timeAgo(doc.last_modified)}</div>
       </div>
       <div class="doc-actions">
         <a class="doc-view" href="${doc.view_url}" target="_blank" rel="noopener" title="View"><i class="fa-solid fa-eye"></i></a>
         <a class="doc-download" href="${doc.download_url}" title="Download" download><i class="fa-solid fa-download"></i></a>
-        <button class="doc-delete" title="Delete" onclick="deleteDoc('${doc.key}', this)"><i class="fa-solid fa-trash-can"></i></button>
+        ${RK_PERMS.delete ? `<button class="doc-delete" title="Delete" onclick="deleteDoc('${doc.key}', this)"><i class="fa-solid fa-trash-can"></i></button>` : ''}
       </div>
     `;
     docsList.appendChild(el);
@@ -1108,8 +1119,7 @@ async function retryConvert(key) {
     const resp = await fetch(RK_API + '/api/documents/' + encodeURIComponent(key) + '/retry', {method: 'POST'});
     const data = await resp.json();
     if (resp.ok) {
-      loadDocuments();
-      loadStats();
+      if (RK_PERMS.view) loadDocuments();
     } else {
       alert('Retry failed: ' + (data.error || 'Unknown error'));
       if (badge) { badge.classList.remove('retrying'); badge.innerHTML = '<span class="default-label"><i class="fa-solid fa-xmark"></i> KB</span><span class="retry-label"><i class="fa-solid fa-arrow-rotate-right"></i> Retry</span>'; }
@@ -1556,7 +1566,7 @@ async function loadStats() {
 
     const oc = document.getElementById('sync-orphans-container');
     if (d.orphans && d.orphans.length > 0) {
-      oc.innerHTML = `<div class="sync-details-orphans"><h4><i class="fa-solid fa-link-slash"></i> Orphans (${d.orphans.length})</h4>${d.orphans.map(k => `<div class="orphan-item"><span>${escapeHtml(k)}</span><button class="orphan-remove" onclick="removeOrphan('${k.replace(/'/g, "\\'")}')"><i class="fa-solid fa-trash-can"></i></button></div>`).join('')}</div>`;
+      oc.innerHTML = `<div class="sync-details-orphans"><h4><i class="fa-solid fa-link-slash"></i> Orphans (${d.orphans.length})</h4>${d.orphans.map(k => `<div class="orphan-item"><span>${escapeHtml(k)}</span>${RK_PERMS.manageOrphans ? `<button class="orphan-remove" onclick="removeOrphan('${k.replace(/'/g, "\\'")}')"><i class="fa-solid fa-trash-can"></i></button>` : ''}</div>`).join('')}</div>`;
     } else {
       oc.innerHTML = '';
     }
@@ -1567,15 +1577,45 @@ async function removeOrphan(key) {
   if (!confirm('Remove orphan: ' + key + '?')) return;
   try {
     const resp = await fetch(RK_API + '/api/orphans/' + encodeURIComponent(key), {method: 'DELETE'});
-    if (resp.ok) { loadStats(); loadDocuments(); }
+    if (resp.ok) { if (RK_PERMS.viewStats) loadStats(); if (RK_PERMS.view) loadDocuments(); }
   } catch {}
 }
 
-loadStats();
-setInterval(loadStats, 10000);
+if (RK_PERMS.viewStats) { loadStats(); setInterval(loadStats, 10000); }
+if (RK_PERMS.view) { loadDocuments(); }
 
-// Load documents on page load
-loadDocuments();
+// ── Permission-based UI gating ──────────────────────────────
+(function applyPermissions() {
+  const hide = el => { if (el) el.style.display = 'none'; };
+  const hideAll = sel => document.querySelectorAll(sel).forEach(hide);
+
+  if (!RK_PERMS.view) {
+    hide(document.getElementById('docs-list'));
+    hide(document.getElementById('docs-pagination'));
+    hide(document.querySelector('.docs-search'));
+    hide(document.querySelector('.docs-filters'));
+  }
+  if (!RK_PERMS.upload) {
+    hide(document.getElementById('upload-btn'));
+    hide(document.getElementById('file-input'));
+    hide(document.getElementById('dismiss-all-btn'));
+    const ds = document.getElementById('docs-section');
+    if (ds) { ds.ondragover = null; ds.ondrop = null; ds.classList.remove('drag-over'); }
+  }
+  if (!RK_PERMS.delete) {
+    hideAll('.doc-delete');
+  }
+  if (!RK_PERMS.chat) {
+    hide(document.querySelector('.tab-btn[data-tab="chat"]'));
+    hide(document.getElementById('chat-panel'));
+  }
+  if (!RK_PERMS.search) {
+    hide(document.getElementById('search-panel'));
+  }
+  if (!RK_PERMS.viewStats) {
+    hide(document.getElementById('sync-status-btn'));
+  }
+})();
 
 // Populate drop overlay extensions
 const dropExts = document.getElementById('drop-exts');

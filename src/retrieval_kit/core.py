@@ -214,6 +214,7 @@ def create_blueprint(config):
     api_base = config.get("api_base", "")
     _auth = config.get("auth_decorator", lambda attr: lambda f: f)
     _auth_map = config.get("route_auth_map", {})
+    _resolve_user_attrs = config.get("user_attributes_resolver", None)
 
     BUCKET = f"{app_prefix}retrieval-kit-source-documents"
     ORIGINALS_BUCKET = f"{app_prefix}retrieval-kit-original-documents"
@@ -545,11 +546,13 @@ def create_blueprint(config):
     @bp.route("/")
     def index():
         exts = sorted(ALLOWED_EXTENSIONS)
+        user_attrs = _resolve_user_attrs() if _resolve_user_attrs else None
         return render_template(
             "documentation-page.html",
             allowed_extensions=exts,
             accept_string=",".join(f".{e}" for e in exts),
             api_base=api_base,
+            user_attrs=user_attrs,
         )
 
     @bp.route("/api/stats", methods=["GET"])

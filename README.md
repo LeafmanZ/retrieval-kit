@@ -1,41 +1,165 @@
 # RetrievalKit
 
-A self-contained RAG (Retrieval-Augmented Generation) backend powered by AWS Bedrock Knowledge Bases. It provides document upload, hybrid search, agentic multi-tool retrieval, and a chat interface — all exposed as a Flask API with SSE streaming.
+A RAG (Retrieval-Augmented Generation) backend powered by AWS Bedrock Knowledge Bases. Provides document upload, hybrid search, agentic multi-tool retrieval, and conversational chat — exposed as a Flask Blueprint that can be mounted into any host app or run standalone.
 
 ## Architecture
 
 ```
-                         ┌──────────────┐
-                         │  Flask API   │
-                         │   (app.py)   │
-                         └──┬───┬───┬───┘
-                            │   │   │
-              ┌─────────────┘   │   └─────────────┐
-              ▼                 ▼                  ▼
-     ┌────────────────┐ ┌─────────────┐  ┌────────────────┐
-     │  S3 (Originals)│ │ S3 (KB Src) │  │ Bedrock Runtime│
-     │  raw uploads   │ │ PDF-ready   │  │  Claude LLM    │
-     └────────────────┘ └──────┬──────┘  └────────────────┘
-                               │
-                        ┌──────▼──────┐
-                        │   Bedrock   │
-                        │ Knowledge   │
-                        │    Base     │
-                        └─────────────┘
+                         ┌──────────────────┐
+                         │   Host App or    │
+                         │  Standalone Flask │
+                         │                  │
+                         │  ┌────────────┐  │
+                         │  │ retrieval  │  │
+                         │  │ _kit       │  │
+                         │  │ Blueprint  │  │
+                         │  └──┬───┬───┬─┘  │
+                         └─────┤   │   ├────┘
+                               │   │   │
+                 ┌─────────────┘   │   └─────────────┐
+                 ▼                 ▼                  ▼
+        ┌────────────────┐ ┌─────────────┐  ┌────────────────┐
+        │  S3 (Originals)│ │ S3 (KB Src) │  │ Bedrock Runtime│
+        │  raw uploads   │ │ PDF-ready   │  │  Converse API  │
+        └────────────────┘ └──────┬──────┘  └────────────────┘
+                                  │
+                           ┌──────▼──────┐
+                           │   Bedrock   │
+                           │ Knowledge   │
+                           │    Base     │
+                           └─────────────┘
 ```
 
-**Upload flow:** file → LibreOffice conversion (if Office format) → write to KB source bucket → write original to originals bucket. If the original write fails, the KB source is rolled back.
-
-**Auto-sync:** A background thread polls every 10s, compares the KB source bucket object count against the last ingestion's scanned count, and triggers a new ingestion job if they differ.
+**Two modes:**
+- **Standalone** — `python run.py` starts a Flask app on port 5000 with no auth. Config loaded from `.env`.
+- **Host integration** — `pip install retrieval-kit`, call `create_blueprint(config)`, register the returned Blueprint on your Flask app. The host injects its own boto3 clients, auth decorator, and config. No separate process.
 
 ## What It Does
 
-- **Document Management** — Upload files (PDF, DOCX, PPTX, images, audio, video, CSV, TXT), auto-converts Office formats to PDF via LibreOffice, stores originals and KB-ready copies in S3. 50 MB max upload size. Duplicate detection, retry conversion, and orphan cleanup included.
+- **Document Management** — Upload files (PDF, DOCX, PPTX, images, audio, video, CSV, TXT), auto-converts Office formats to PDF via LibreOffice, stores originals and KB-ready copies in S3. 50 MB max. Duplicate detection, retry conversion, orphan cleanup.
 - **Hybrid Search** — Semantic + keyword search via Bedrock Knowledge Base with automatic ingestion sync.
-- **Smart Search (Agentic)** — An LLM decides which retrieval tools to call and iterates up to 4 rounds until satisfied. Results stream via SSE. Supports `scoped_keys` filtering and `search_config` (score threshold, min/max results, search type).
+- **Smart Search (Agentic)** — LLM decides which retrieval tools to call, iterates up to 4 rounds. Results stream via SSE. Supports `scoped_keys` filtering and `search_config`.
 - **Chat** — Multi-turn conversational RAG with tool-use orchestration and citation tracking.
 - **Auto-Sync** — Background poller detects new S3 objects and triggers KB ingestion automatically.
-- **Stats & Health** — Dashboard endpoint with document counts by type, KB sync status, and orphan detection.
+- **Stats & Health** — Document counts by type, KB sync status, orphan detection.
+
+## Installation
+
+**From Git (recommended):**
+```bash
+pip install git+https://github.com/LeafmanZ/retrieval-kit.git@v1.0.0
+```
+
+**From local path (development):**
+```bash
+pip install -e /path/to/retrieval-kit
+```
+
+## Standalone Usage
+
+```bash
+cp .env.example .env
+# Edit .env with your AWS config
+python run.py
+# → http://localhost:5000
+```
+
+## Host App Integration
+
+```python
+from retrieval_kit import create_blueprint, get_attributes
+
+# Build config with your own boto3 clients
+config = {
+    "s3_client": your_s3_client,
+    "bedrock_agent": your_bedrock_agent_client,
+    "bedrock_agent_runtime": your_bedrock_agent_runtime_client,
+    "bedrock_runtime": your_bedrock_runtime_client,
+    "app_prefix": "myapp-",                    # → myapp-retrieval-kit-source-documents
+    "knowledge_base_id": "YOUR_KB_ID",
+    "data_source_id": "YOUR_DS_ID",
+    "model_id": "amazon.nova-pro-v1:0",
+    "api_base": "/docs",                       # JS fetch prefix (empty for standalone)
+    "enable_sync_poller": True,
+    "auth_decorator": your_auth_decorator,     # callable(attribute) → decorator
+    "route_auth_map": {                        # route → attribute for auth enforcement
+        "/api/documents": "documentation:view",
+        "/api/upload": "documentation:upload",
+        "/api/chat": "documentation:chat",
+        # ...
+    },
+}
+
+bp = create_blueprint(config)
+app.register_blueprint(bp, url_prefix="/docs")
+
+# Merge retrieval-kit's RBAC attributes into your permission system
+for attr in get_attributes():
+    register_attribute(attr["attribute_name"], attr["description"])
+```
+
+### Config Dict Contract
+
+| Key | Type | Description | Default |
+|-----|------|-------------|---------|
+| `s3_client` | boto3 client | S3 client | *(required)* |
+| `bedrock_agent` | boto3 client | bedrock-agent client | *(required)* |
+| `bedrock_agent_runtime` | boto3 client | bedrock-agent-runtime client | *(required)* |
+| `bedrock_runtime` | boto3 client | bedrock-runtime client | *(required)* |
+| `app_prefix` | str | Bucket name prefix | `""` |
+| `knowledge_base_id` | str | Bedrock Knowledge Base ID | *(required)* |
+| `data_source_id` | str | Bedrock Data Source ID | *(required)* |
+| `model_id` | str | Bedrock model ID | `"amazon.nova-pro-v1:0"` |
+| `api_base` | str | URL prefix for JS fetch calls | `""` |
+| `enable_sync_poller` | bool | Start background KB sync thread | `True` |
+| `auth_decorator` | callable | `auth_decorator(attribute)` → decorator | no-op |
+| `route_auth_map` | dict | `{route_rule: attribute_name}` | `{}` |
+
+### Bucket Naming
+
+Bucket names are derived from `app_prefix`:
+- `{app_prefix}retrieval-kit-source-documents` — KB-ready files (PDF-converted)
+- `{app_prefix}retrieval-kit-original-documents` — Raw uploaded originals
+
+| `app_prefix` | Source bucket | Originals bucket |
+|---|---|---|
+| `""` (standalone) | `retrieval-kit-source-documents` | `retrieval-kit-original-documents` |
+| `"ceta-central-"` | `ceta-central-retrieval-kit-source-documents` | `ceta-central-retrieval-kit-original-documents` |
+
+## RBAC Attributes
+
+Retrieval-kit ships its own attribute definitions in `attributes.csv`. Host apps can load them via `get_attributes()` and merge into their permission system.
+
+| Attribute | Description |
+|---|---|
+| `documentation:view` | View document list and download documents |
+| `documentation:upload` | Upload new documents |
+| `documentation:delete` | Delete documents |
+| `documentation:chat` | Use AI chat for document Q&A |
+| `documentation:search` | Use smart search across documents |
+| `documentation:retry` | Retry failed document conversions |
+| `documentation:manage-orphans` | Delete orphaned documents from KB |
+| `documentation:view-stats` | View document stats and sync status |
+| `documentation:view-ingestion` | Check knowledge base ingestion job status |
+
+Page-level visibility (e.g. `page-view:documentation`) is **not** included — that's the host app's responsibility.
+
+## API Endpoints
+
+| Method | Path | Auth Attribute | Description |
+|--------|------|----------------|-------------|
+| GET | `/` | *(page-level)* | Built-in UI |
+| POST | `/upload` | `documentation:upload` | Single file upload |
+| POST | `/api/upload` | `documentation:upload` | Multi-file upload |
+| GET | `/api/documents` | `documentation:view` | List documents with presigned URLs |
+| DELETE | `/api/documents/<key>` | `documentation:delete` | Delete a document |
+| POST | `/api/documents/<key>/retry` | `documentation:retry` | Re-convert and re-push to KB |
+| DELETE | `/api/orphans/<key>` | `documentation:manage-orphans` | Delete orphaned original |
+| GET | `/api/stats` | `documentation:view-stats` | Counts, sync status, orphans |
+| GET | `/api/ingestion/<job_id>` | `documentation:view-ingestion` | Ingestion job status |
+| POST | `/api/query` | `documentation:search` | Simple hybrid retrieval |
+| POST | `/api/smart_search` | `documentation:search` | Agentic multi-tool search (SSE) |
+| POST | `/api/chat` | `documentation:chat` | Conversational RAG (SSE) |
 
 ## Supported File Formats
 
@@ -47,128 +171,18 @@ A self-contained RAG (Retrieval-Augmented Generation) backend powered by AWS Bed
 | Video | mp4, webm, mkv, avi, mov |
 | Office (→ PDF) | doc, docx, ppt, pptx, xls, xlsx, rtf, odt, odp, ods, html, htm |
 
-Office formats are converted to PDF via LibreOffice before ingestion. The converted file is stored in the KB source bucket as `{stem}_{ext}.pdf` (e.g. `report_docx.pdf`).
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Serves the built-in UI |
-| POST | `/upload` | Single file upload (`file` form field) |
-| POST | `/api/upload` | Multi-file upload (`files` form field) |
-| GET | `/api/documents` | List all documents with presigned view/download URLs and KB sync status |
-| DELETE | `/api/documents/<key>` | Delete a document (original + KB source) |
-| POST | `/api/documents/<key>/retry` | Re-convert and re-push a document to the KB source bucket |
-| DELETE | `/api/orphans/<key>` | Delete an orphaned original (no matching KB source file) |
-| GET | `/api/stats` | Document counts, type breakdown, latest ingestion details, orphan list |
-| GET | `/api/ingestion/<job_id>` | Poll ingestion job status |
-| POST | `/api/query` | Simple hybrid retrieval (non-agentic) |
-| POST | `/api/smart_search` | Agentic multi-tool search (SSE stream) |
-| POST | `/api/chat` | Conversational RAG (SSE stream) |
-
-## API Usage Examples
-
-### Upload
-
-```bash
-# Single file
-curl -X POST -F "file=@report.pdf" http://localhost:5000/upload
-
-# Multiple files
-curl -X POST -F "files=@a.pdf" -F "files=@b.docx" http://localhost:5000/api/upload
-```
-
-Response:
-```json
-{"message": "Uploaded → s3://kb-bucket/report.pdf", "key": "report.pdf", "original_key": "report.pdf"}
-```
-
-### Simple Query
-
-```bash
-curl -X POST http://localhost:5000/api/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is the refund policy?", "n_results": 5}'
-```
-
-Response:
-```json
-{
-  "query": "What is the refund policy?",
-  "sources": [
-    {
-      "text": "...",
-      "score": 0.82,
-      "uri": "s3://kb-bucket/policy.pdf",
-      "content_type": "TEXT",
-      "page": 3,
-      "image_url": null,
-      "description": "",
-      "start_time_ms": null,
-      "end_time_ms": null
-    }
-  ]
-}
-```
-
-### Smart Search (SSE)
-
-```bash
-curl -X POST http://localhost:5000/api/smart_search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "find invoice 2024-0042",
-    "scoped_keys": ["invoices_xlsx.pdf"],
-    "search_config": {
-      "score_threshold": 50,
-      "min_results": 1,
-      "max_results": 10,
-      "search_type": "HYBRID"
-    }
-  }'
-```
-
-### Chat (SSE)
-
-```bash
-curl -X POST http://localhost:5000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Summarize the Q3 earnings report",
-    "history": [
-      {"role": "user", "content": "What documents do we have?"},
-      {"role": "assistant", "content": "I found several documents including..."}
-    ],
-    "scoped_keys": ["q3_earnings_pdf.pdf"],
-    "search_config": {"max_results": 5}
-  }'
-```
-
 ## Retrieval Tools
 
-The agentic endpoints (`/api/smart_search`, `/api/chat`) use an LLM to route queries to these tools:
+The agentic endpoints (`/api/smart_search`, `/api/chat`) use an LLM to route queries:
 
-| Tool | Description | When Used |
-|------|-------------|-----------|
-| `semantic_search` | Hybrid search across all documents by meaning/topic | Questions, topics, general content searches |
-| `exact_text_search` | Literal substring match (retrieves 25 chunks, filters locally) | Numbers, codes, IDs, special characters |
-| `filename_search` | S3 key substring match + content pull for matched files | Finding files by name, listing documents |
-| `search_within_document` | Semantic search filtered to a specific document's URI | Questions about a specific named document |
+| Tool | When Used |
+|------|-----------|
+| `semantic_search` | Questions, topics, general content searches |
+| `exact_text_search` | Numbers, codes, IDs, special characters |
+| `filename_search` | Finding files by name |
+| `search_within_document` | Questions about a specific named document |
 
-The LLM may call multiple tools per round and iterate up to 4 rounds. It stops early if good results are found and retries with different strategies if a tool returns 0 results.
-
-## Content Type Handling
-
-Bedrock KB returns different content structures depending on the source media:
-
-| Content Type | Extracted Field | Notes |
-|-------------|----------------|-------|
-| `TEXT` / `PDF` | `content.text` | Standard text chunks with page numbers |
-| `IMAGE` | `content.text` + presigned URL | Image description + viewable URL via `image_url` |
-| `AUDIO` | `content.audio.transcription` | Transcribed text with start/end timestamps (ms) |
-| `VIDEO` | `content.video.summary` | Video summary with start/end timestamps (ms) |
-
-All results include a `source_url` presigned link back to the original document in the originals bucket.
+The LLM may call multiple tools per round and iterate up to 4 rounds.
 
 ## SSE Event Protocol
 
@@ -176,99 +190,104 @@ All results include a `source_url` presigned link back to the original document 
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `status` | `{message, tool?, input?, error?}` | Progress updates (tool selection, execution, round checks) |
+| `status` | `{message, tool?, input?, error?}` | Progress updates |
 | `tool_result` | `{tool, input, result}` | Raw retrieval results per tool call |
-| `done` | `{query, tool_results}` | Search complete — smart_search only |
-| `answer` | `{answer, citations, tools_used}` | Final generated answer — chat only |
+| `done` | `{query, tool_results}` | Search complete (smart_search only) |
+| `answer` | `{answer, citations, tools_used}` | Final answer (chat only) |
 
-## Error Responses
-
-| Code | Condition |
-|------|-----------|
-| 400 | Missing query/message, no file provided, invalid filename, empty file |
-| 404 | Document not found (delete/retry) |
-| 409 | Duplicate document (upload) |
-| 413 | File exceeds 50 MB |
-| 500 | Conversion failure, S3 error, Bedrock error |
-
-## Prerequisites
-
-- Python 3.10+
-- AWS account with Bedrock access (Knowledge Base + Data Source already provisioned)
-- LibreOffice (for Office → PDF conversion)
-- Two S3 buckets: `retrieval-kit-source-documents` and `retrieval-kit-original-documents` (or prefixed variants — see `APP_PREFIX`)
-
-## Setup
-
-```bash
-pip install -r requirements.txt
-
-# Install LibreOffice (Ubuntu/Debian)
-sudo apt install libreoffice-core libreoffice-writer
-```
-
-## Configuration (.env)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_PREFIX` | Optional prefix prepended to the hardcoded bucket names (`retrieval-kit-source-documents`, `retrieval-kit-original-documents`). Use when deploying multiple instances or in a different environment. | *(none)* |
-| `REGION` | AWS region | *(required)* |
-| `BEDROCK_MODEL_ID` | Bedrock model for LLM routing/chat | `amazon.nova-pro-v1:0` |
-| `KNOWLEDGE_BASE_ID` | Bedrock Knowledge Base ID | *(required)* |
-| `DATA_SOURCE_ID` | Bedrock Data Source ID | *(required)* |
-| `AWS_PROFILE` | Named AWS CLI profile (for SSO or named profiles) | *(none — uses default)* |
-| `ACCESS_KEY` | AWS access key ID (static credentials, testing only) | *(none)* |
-| `SECRET_ACCESS_KEY` | AWS secret access key (static credentials, testing only) | *(none)* |
-
-### Authentication
-
-Credentials are resolved in this order:
-
-1. **AWS SSO / named profile** — Set `AWS_PROFILE` to your SSO profile name. Run `aws sso login --profile <profile>` before starting the app.
-2. **Default credential chain** — If neither `AWS_PROFILE` nor static keys are set, boto3 uses its [default chain](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html) (env vars `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, instance profile, ECS task role, etc.).
-3. **Static keys (testing only)** — Set `ACCESS_KEY` and `SECRET_ACCESS_KEY` in `.env`. Not recommended for production.
+## Configuration (.env) — Standalone Mode
 
 ```env
-# ── Required ──
-REGION=us-east-1
+# Required
+REGION=us-gov-west-1
 KNOWLEDGE_BASE_ID=<your_kb_id>
 DATA_SOURCE_ID=<your_ds_id>
 
-# ── Optional: bucket prefix ──
-# Buckets default to retrieval-kit-source-documents and retrieval-kit-original-documents.
-# Set APP_PREFIX to prepend a custom prefix, e.g. APP_PREFIX=myapp- produces
-# myapp-retrieval-kit-source-documents and myapp-retrieval-kit-original-documents.
-# APP_PREFIX=myapp-
+# Optional
+BEDROCK_MODEL_ID=amazon.nova-pro-v1:0
+APP_PREFIX=
 
-# ── Auth: pick ONE approach ──
-# Option A: SSO / named profile
+# Auth (pick one)
 AWS_PROFILE=my-sso-profile
-
-# Option B: Static keys (testing only)
 # ACCESS_KEY=<access_key>
 # SECRET_ACCESS_KEY=<secret_access_key>
 ```
 
-## Run
+## Prerequisites
 
-```bash
-python app.py
-# → http://localhost:5000
+- Python 3.10+
+- AWS account with Bedrock Knowledge Base + Data Source provisioned
+- LibreOffice (for Office → PDF conversion): `sudo apt install libreoffice-core libreoffice-writer`
+- Two S3 buckets (see Bucket Naming above)
+
+## IAM Permissions Required
+
+```json
+{
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::{prefix}retrieval-kit-source-documents",
+                "arn:aws:s3:::{prefix}retrieval-kit-source-documents/*",
+                "arn:aws:s3:::{prefix}retrieval-kit-original-documents",
+                "arn:aws:s3:::{prefix}retrieval-kit-original-documents/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "bedrock-agent:StartIngestionJob",
+                "bedrock-agent:ListIngestionJobs",
+                "bedrock-agent:GetIngestionJob",
+                "bedrock-agent-runtime:Retrieve",
+                "bedrock-runtime:Converse"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
 ```
 
 ## Project Structure
 
 ```
-RetrievalKit/
-├── app.py              # All backend logic
-├── requirements.txt    # Python dependencies (boto3, flask, python-dotenv, werkzeug)
-├── .env                # AWS credentials & config
-├── templates/
-│   └── documentation-page.html      # Built-in frontend UI
-└── static/
-    ├── css/            # Stylesheets
-    ├── js/             # Frontend scripts
-    ├── icons/          # App icons
-    ├── images/         # Static images
-    └── webfonts/       # Font files
+retrieval-kit/
+├── pyproject.toml                    # Package metadata + deps
+├── run.py                            # Standalone entry point
+├── .env.example                      # Example config
+├── README.md
+└── src/
+    └── retrieval_kit/
+        ├── __init__.py               # Exports: create_blueprint, create_standalone_app, get_attributes
+        ├── core.py                   # Blueprint factory, routes, search tools, helpers
+        ├── attributes.csv            # RBAC attribute definitions shipped with package
+        ├── templates/
+        │   └── documentation-page.html
+        └── static/
+            ├── css/
+            ├── js/
+            ├── icons/
+            ├── images/
+            └── webfonts/
 ```
+
+## Error Responses
+
+| Code | Condition |
+|------|-----------|
+| 400 | Missing query/message, no file, invalid filename, empty file |
+| 404 | Document not found |
+| 409 | Duplicate document |
+| 413 | File exceeds 50 MB |
+| 500 | Conversion failure, S3 error, Bedrock error |
+
+## Versioning
+
+Host apps pin to a specific tag:
+```
+retrieval-kit @ git+https://github.com/LeafmanZ/retrieval-kit.git@v1.0.0
+```
+
+To upgrade: update the version pin and `pip install`. No host code changes needed unless the config contract changed (major version bump).

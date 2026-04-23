@@ -212,6 +212,8 @@ def create_blueprint(config):
     DATA_SOURCE_ID = config["data_source_id"]
     MODEL_ID = config.get("model_id", "amazon.nova-pro-v1:0")
     api_base = config.get("api_base", "")
+    _auth = config.get("auth_decorator", lambda attr: lambda f: f)
+    _auth_map = config.get("route_auth_map", {})
 
     BUCKET = f"{app_prefix}retrieval-kit-source-documents"
     ORIGINALS_BUCKET = f"{app_prefix}retrieval-kit-original-documents"
@@ -921,7 +923,28 @@ def create_blueprint(config):
         return Response(stream_with_context(generate()), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # ── Sync poller ───────────────────────────────────────
+    # ── Auth enforcement ──────────────────────────────────
+    if _auth_map:
+        @bp.before_request
+        def _enforce_auth():
+            rule = request.url_rule
+            if rule is None:
+                return
+            # Strip url_prefix to get the blueprint-local rule
+            local = rule.rule
+            if api_base and local.startswith(api_base):
+                local = local[len(api_base):] or "/"
+            attr = _auth_map.get(local)
+            if attr:
+                # Build a dummy view, decorate it, call it — returns None (pass) or error response
+                @_auth(attr)
+                def _check():
+                    return None
+                result = _check()
+                if result is not None:
+                    return result
+
+    # ── Sync poller ──────────────────────────────────────
     if config.get("enable_sync_poller", True):
         _poller_started = [False]
 

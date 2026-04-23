@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RetrievalKit</title>
-<link rel="icon" type="image/jpeg" href="{{ url_for('static', filename='images/retrievalkit_icon.png') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/Roboto_Condensed_400_700_display_swap.css') }}" />
-<link rel="stylesheet" href="{{ url_for('static', filename='css/font-awesome.6.5.2.all.min.css') }}" />
-<link rel="stylesheet" href="{{ url_for('static', filename='css/overflow-y.custom.css') }}" />
+<link rel="icon" type="image/jpeg" href="{{ url_for('retrieval_kit.static', filename='images/retrievalkit_icon.png') }}">
+<link rel="stylesheet" href="{{ url_for('retrieval_kit.static', filename='css/Roboto_Condensed_400_700_display_swap.css') }}" />
+<link rel="stylesheet" href="{{ url_for('retrieval_kit.static', filename='css/font-awesome.6.5.2.all.min.css') }}" />
+<link rel="stylesheet" href="{{ url_for('retrieval_kit.static', filename='css/overflow-y.custom.css') }}" />
 <style>
   :root {
     --primary-neon: #00ffff;
@@ -690,6 +690,7 @@
 </div>
 
 <script>
+const RK_API = '{{ api_base }}';
 const fileInput = document.getElementById('file-input');
 const docsSection = document.getElementById('docs-section');
 const results = document.getElementById('results');
@@ -824,7 +825,7 @@ function uploadFile(file) {
   const fd = new FormData();
   fd.append('file', file);
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/upload');
+  xhr.open('POST', RK_API + '/upload');
 
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) setProgress(id, Math.round((e.loaded / e.total) * 90), 'uploading', 'Uploading...');
@@ -878,7 +879,7 @@ function setProgress(id, pct, state, text) {
 function pollIngestion(uploadId, jobId) {
   const poll = setInterval(async () => {
     try {
-      const resp = await fetch('/api/ingestion/' + jobId);
+      const resp = await fetch(RK_API + '/api/ingestion/' + jobId);
       const data = await resp.json();
       if (data.status === 'COMPLETE') {
         clearInterval(poll);
@@ -1073,7 +1074,7 @@ function docsChangePage(dir) { docsPage += dir; renderDocsPage(); }
 async function loadDocuments() {
   docsList.innerHTML = '<div class="docs-loading"><div class="docs-spinner"></div><span>Loading documents…</span></div>';
   try {
-    const resp = await fetch('/api/documents');
+    const resp = await fetch(RK_API + '/api/documents');
     const data = await resp.json();
     allDocs = data.documents || [];
     const totalSize = allDocs.reduce((a, d) => a + d.size, 0);
@@ -1090,7 +1091,7 @@ async function deleteDoc(key, btn) {
   btn.disabled = true;
   btn.textContent = '…';
   try {
-    const resp = await fetch('/api/documents/' + encodeURIComponent(key), {method: 'DELETE'});
+    const resp = await fetch(RK_API + '/api/documents/' + encodeURIComponent(key), {method: 'DELETE'});
     if (resp.ok) loadDocuments();
   } catch {}
 }
@@ -1104,7 +1105,7 @@ async function retryConvert(key) {
   }
   if (badge) { badge.classList.add('retrying'); badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
   try {
-    const resp = await fetch('/api/documents/' + encodeURIComponent(key) + '/retry', {method: 'POST'});
+    const resp = await fetch(RK_API + '/api/documents/' + encodeURIComponent(key) + '/retry', {method: 'POST'});
     const data = await resp.json();
     if (resp.ok) {
       loadDocuments();
@@ -1292,7 +1293,7 @@ async function doSearch() {
   if (scopedKeys) payload.scoped_keys = scopedKeys;
 
   try {
-    const resp = await fetch('/api/smart_search', {
+    const resp = await fetch(RK_API + '/api/smart_search', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
@@ -1435,7 +1436,7 @@ async function sendChat() {
   let answerReceived = false;
 
   try {
-    const resp = await fetch('/api/chat', {
+    const resp = await fetch(RK_API + '/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(chatPayload),
@@ -1513,7 +1514,7 @@ const TYPE_FA = {
 
 async function loadStats() {
   try {
-    const resp = await fetch('/api/stats');
+    const resp = await fetch(RK_API + '/api/stats');
     const d = await resp.json();
 
     const sy = d.sync;
@@ -1565,7 +1566,7 @@ async function loadStats() {
 async function removeOrphan(key) {
   if (!confirm('Remove orphan: ' + key + '?')) return;
   try {
-    const resp = await fetch('/api/orphans/' + encodeURIComponent(key), {method: 'DELETE'});
+    const resp = await fetch(RK_API + '/api/orphans/' + encodeURIComponent(key), {method: 'DELETE'});
     if (resp.ok) { loadStats(); loadDocuments(); }
   } catch {}
 }

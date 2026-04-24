@@ -42,12 +42,13 @@ A RAG (Retrieval-Augmented Generation) backend powered by AWS Bedrock Knowledge 
 - **Chat** — Multi-turn conversational RAG with tool-use orchestration and citation tracking.
 - **Auto-Sync** — Background poller detects new S3 objects and triggers KB ingestion automatically.
 - **Stats & Health** — Document counts by type, KB sync status, orphan detection.
+- **Audit Trail** — Every upload, delete, retry, and orphan removal is logged to S3 as JSON with user identity and IP address. Uploader metadata is stamped on S3 objects and shown in the UI.
 
 ## Installation
 
 **From Git (recommended):**
 ```bash
-pip install git+https://github.com/LeafmanZ/retrieval-kit.git@v1.0.0
+pip install git+https://github.com/LeafmanZ/retrieval-kit.git@v1.2.0
 ```
 
 **From local path (development):**
@@ -114,17 +115,19 @@ for attr in get_attributes():
 | `enable_sync_poller` | bool | Start background KB sync thread | `True` |
 | `auth_decorator` | callable | `auth_decorator(attribute)` → decorator | no-op |
 | `route_auth_map` | dict | `{route_rule: attribute_name}` | `{}` |
+| `get_current_user` | callable | Returns `{id, email, display_name, role}` for audit | anonymous default |
 
 ### Bucket Naming
 
 Bucket names are derived from `app_prefix`:
 - `{app_prefix}retrieval-kit-source-documents` — KB-ready files (PDF-converted)
 - `{app_prefix}retrieval-kit-original-documents` — Raw uploaded originals
+- `{app_prefix}retrieval-kit-audit-logs` — Audit trail (JSON per event, date-partitioned)
 
-| `app_prefix` | Source bucket | Originals bucket |
-|---|---|---|
-| `""` (standalone) | `retrieval-kit-source-documents` | `retrieval-kit-original-documents` |
-| `"ceta-central-"` | `ceta-central-retrieval-kit-source-documents` | `ceta-central-retrieval-kit-original-documents` |
+| `app_prefix` | Source bucket | Originals bucket | Audit bucket |
+|---|---|---|---|
+| `""` (standalone) | `retrieval-kit-source-documents` | `retrieval-kit-original-documents` | `retrieval-kit-audit-logs` |
+| `"ceta-central-"` | `ceta-central-retrieval-kit-source-documents` | `ceta-central-retrieval-kit-original-documents` | `ceta-central-retrieval-kit-audit-logs` |
 
 ## RBAC Attributes
 
@@ -140,7 +143,9 @@ Retrieval-kit ships its own attribute definitions in `attributes.csv`. Host apps
 | `documentation:retry` | Retry failed document conversions |
 | `documentation:manage-orphans` | Delete orphaned documents from KB |
 | `documentation:view-stats` | View document stats and sync status |
-| `documentation:view-ingestion` | Check knowledge base ingestion job status |
+| `documentation:view-audit` | View audit log of document actions |
+
+`documentation:admin-users` is an internal attribute used only in standalone mode for user/role administration. It is not exported via `get_attributes()` and does not affect host apps.
 
 Page-level visibility (e.g. `page-view:documentation`) is **not** included — that's the host app's responsibility.
 
@@ -160,6 +165,22 @@ Page-level visibility (e.g. `page-view:documentation`) is **not** included — t
 | POST | `/api/query` | `documentation:search` | Simple hybrid retrieval |
 | POST | `/api/smart_search` | `documentation:search` | Agentic multi-tool search (SSE) |
 | POST | `/api/chat` | `documentation:chat` | Conversational RAG (SSE) |
+| GET | `/api/audit` | `documentation:view-audit` | List audit logs (filterable) |
+| GET | `/api/audit/document/<key>` | `documentation:view-audit` | Audit history for one document |
+| POST | `/api/auth/login` | *(standalone only)* | Login |
+| POST | `/api/auth/logout` | *(standalone only)* | Logout |
+| GET | `/api/auth/me` | *(standalone only)* | Current user info |
+| POST | `/api/auth/change-password` | *(standalone only)* | Change own password |
+| GET | `/api/admin/users` | *(standalone only)* | List users (admin only) |
+| POST | `/api/admin/users` | *(standalone only)* | Create user (admin only) |
+| PATCH | `/api/admin/users/<id>` | *(standalone only)* | Update user role/status (admin only) |
+| DELETE | `/api/admin/users/<id>` | *(standalone only)* | Deactivate user (admin only) |
+| DELETE | `/api/admin/users/<id>/delete` | *(standalone only)* | Permanently delete user (admin only) |
+| POST | `/api/admin/users/<id>/reset-password` | *(standalone only)* | Reset user password (admin only) |
+| GET | `/api/admin/roles` | *(standalone only)* | List roles + available attributes |
+| POST | `/api/admin/roles` | *(standalone only)* | Create role |
+| PATCH | `/api/admin/roles/<name>` | *(standalone only)* | Update role attributes |
+| DELETE | `/api/admin/roles/<name>` | *(standalone only)* | Delete role |
 
 ## Supported File Formats
 
@@ -211,14 +232,36 @@ APP_PREFIX=
 AWS_PROFILE=my-sso-profile
 # ACCESS_KEY=<access_key>
 # SECRET_ACCESS_KEY=<secret_access_key>
+
+# Standalone auth — seed admin account on first run
+# ADMIN_EMAIL=admin@example.com
+# ADMIN_PASSWORD=<password>
+# REGISTER_EMAIL=admin@example.com  # Shown on login page as contact for account requests
+# SECRET_KEY=                        # Flask session secret (auto-generated if omitted)
 ```
+
+## Standalone Auth & Administration
+
+When running standalone (`python run.py`), retrieval-kit provides a complete user management system:
+
+- **Login page** — Email/password authentication at `/login`. No self-registration; admins create accounts.
+- **User accounts** — Stored as JSON in the audit S3 bucket under `_users/` prefix. No database required.
+- **Role-based access** — Roles stored under `_roles/` prefix. Each role has a set of attributes that control what the user can see and do.
+- **Root admin** — Seeded from `ADMIN_EMAIL`/`ADMIN_PASSWORD` on first run. Cannot be modified, deactivated, or deleted. Password managed only via `.env`.
+- **User administration** — Create, activate/deactivate, delete users. Assign roles. Reset passwords. Accounts must be deactivated before deletion.
+- **Role administration** — Create custom roles, toggle attributes on/off per role. Built-in `admin` and `user` roles cannot be deleted.
+- **Password management** — Users can change their own password. Admins can reset any user's password.
+- **Session tracking** — Last login time and online status (active within 5 minutes) shown in the admin panel.
+- **Contact for access** — Login page shows `REGISTER_EMAIL` as a contact for account requests.
+
+None of this affects host apps. Host apps handle their own auth and user management — retrieval-kit only provides the audit trail and document permission attributes to them.
 
 ## Prerequisites
 
 - Python 3.10+
 - AWS account with Bedrock Knowledge Base + Data Source provisioned
 - LibreOffice (for Office → PDF conversion): `sudo apt install libreoffice-core libreoffice-writer`
-- Two S3 buckets (see Bucket Naming above)
+- Three S3 buckets (see Bucket Naming above)
 
 ## IAM Permissions Required
 
@@ -232,7 +275,9 @@ AWS_PROFILE=my-sso-profile
                 "arn:aws:s3:::{prefix}retrieval-kit-source-documents",
                 "arn:aws:s3:::{prefix}retrieval-kit-source-documents/*",
                 "arn:aws:s3:::{prefix}retrieval-kit-original-documents",
-                "arn:aws:s3:::{prefix}retrieval-kit-original-documents/*"
+                "arn:aws:s3:::{prefix}retrieval-kit-original-documents/*",
+                "arn:aws:s3:::{prefix}retrieval-kit-audit-logs",
+                "arn:aws:s3:::{prefix}retrieval-kit-audit-logs/*"
             ]
         },
         {
@@ -264,7 +309,8 @@ retrieval-kit/
         ├── core.py                   # Blueprint factory, routes, search tools, helpers
         ├── attributes.csv            # RBAC attribute definitions shipped with package
         ├── templates/
-        │   └── documentation-page.html
+        │   ├── documentation-page.html
+        │   └── login-page.html       # Standalone login page
         └── static/
             ├── css/
             ├── js/
@@ -278,6 +324,8 @@ retrieval-kit/
 | Code | Condition |
 |------|-----------|
 | 400 | Missing query/message, no file, invalid filename, empty file |
+| 401 | Login required, invalid credentials |
+| 403 | Access denied, account deactivated, root admin protected |
 | 404 | Document not found |
 | 409 | Duplicate document |
 | 413 | File exceeds 50 MB |
@@ -287,7 +335,7 @@ retrieval-kit/
 
 Host apps pin to a specific tag:
 ```
-retrieval-kit @ git+https://github.com/LeafmanZ/retrieval-kit.git@v1.0.0
+retrieval-kit @ git+https://github.com/LeafmanZ/retrieval-kit.git@v1.2.0
 ```
 
 To upgrade: update the version pin and `pip install`. No host code changes needed unless the config contract changed (major version bump).

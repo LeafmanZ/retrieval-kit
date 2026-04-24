@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "retrieval-kit"
-version = "1.0.0"
+version = "1.2.0"
 description = "RAG backend powered by AWS Bedrock Knowledge Bases"
 requires-python = ">=3.10"
 dependencies = [
     "boto3",
     "flask",
+    "flask-login",
     "python-dotenv",
     "werkzeug",
 ]

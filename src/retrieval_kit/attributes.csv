@@ -8,3 +8,4 @@ documentation:retry,Retry failed document conversions,action
 documentation:manage-orphans,Delete orphaned documents from KB,action
 documentation:view-stats,View document stats and sync status,action
 documentation:view-ingestion,Check knowledge base ingestion job status,action
+documentation:view-audit,View audit log of document actions,action

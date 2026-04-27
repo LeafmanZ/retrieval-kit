@@ -48,7 +48,7 @@ A RAG (Retrieval-Augmented Generation) backend powered by AWS Bedrock Knowledge 
 
 ```bash
 # From Git (recommended)
-pip install git+https://github.com/LeafmanZ/retrieval-kit.git@v1.2.0
+pip install git+https://github.com/LeafmanZ/retrieval-kit.git@v1.3.0
 
 # From local path (development)
 pip install -e /path/to/retrieval-kit
@@ -521,7 +521,7 @@ retrieval-kit/
 
 Host apps pin to a specific tag:
 ```
-retrieval-kit @ git+https://github.com/LeafmanZ/retrieval-kit.git@v1.2.0
+retrieval-kit @ git+https://github.com/LeafmanZ/retrieval-kit.git@v1.3.0
 ```
 
 To upgrade: update the version pin and `pip install`. No host code changes needed unless the config contract changed (major version bump).

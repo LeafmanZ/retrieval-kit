@@ -21,11 +21,11 @@
     --critical-glow: #FF073A;
     --rx-color: #00ffff;
     --rx-color-rgb: 0, 255, 255;
-    --tx-color: #ff00ff;
-    --tx-color-rgb: 255, 0, 255;
+    --tx-color: #F72AFF;
+    --tx-color-rgb: 247, 42, 255;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Roboto Condensed',sans-serif; background:#0a0e17; color:var(--text-color); height:100vh; display:flex; flex-direction:column; }
+  body { font-family:'Roboto Condensed',sans-serif; background:{% if not api_base %}#0a0e17{% else %}transparent{% endif %}; color:var(--text-color); height:100vh; display:flex; flex-direction:column; }
   body::before {
     content:''; position:fixed; top:0; left:0; width:100vw; height:100vh;
     background-image:
@@ -35,7 +35,7 @@
     animation:moveGrid 90s linear infinite;
     z-index:-1; pointer-events:none;
   }
-  @keyframes moveGrid { from{background-position:0 0} to{background-position:50px 50px} }
+  @keyframes moveGrid { from{background-position:0 0} to{background-position:500px 500px} }
 
   .tab-btn {
     font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
@@ -48,8 +48,8 @@
 
   /* Left Panel */
   .left-panel {
-    width:380px; border-right:1px solid var(--border-color); display:flex; flex-direction:column;
-    background:var(--glass-bg); backdrop-filter:blur(10px);
+    width:380px; display:flex; flex-direction:column;
+    background:transparent; overflow:hidden;
   }
 
   #file-input { display:none; }
@@ -106,7 +106,7 @@
     font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
     padding:3px 8px; border-radius:6px; cursor:pointer; font-family:inherit;
   }
-  .upload-btn:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .upload-btn:hover { border-color:var(--tx-color); color:var(--tx-color); box-shadow:0 0 8px rgba(var(--tx-color-rgb),0.3); }
   .upload-exts-panel {
     max-height:0; overflow:hidden; transition:max-height .25s ease, padding .25s ease;
     padding:0 16px; background:rgba(var(--primary-neon-rgb),0.03);
@@ -174,7 +174,7 @@
   .docs-pagination {
     display:flex; justify-content:space-between; align-items:center;
     padding:6px 16px; font-size:11px; color:#555; flex-shrink:0;
-    border-top:1px solid var(--border-color); background:var(--glass-bg);
+    border-top:1px solid var(--border-color); background:transparent;
   }
   .docs-pag-controls { display:flex; align-items:center; gap:8px; color:#888; }
   .doc-count-bar { display:flex; align-items:center; gap:8px; }
@@ -235,7 +235,7 @@
     background:none; border:none; color:#555; cursor:pointer; font-size:14px;
     padding:2px 4px; border-radius:4px; flex-shrink:0;
   }
-  .doc-delete:hover { color:var(--critical-glow); background:rgba(255,7,58,0.1); }
+  .doc-delete:hover { color:var(--tx-color); background:rgba(var(--tx-color-rgb),0.1); }
   .docs-empty { color:#555; font-size:12px; text-align:center; padding:20px; }
   .docs-loading { color:#666; font-size:12px; text-align:center; padding:30px 20px; display:flex; flex-direction:column; align-items:center; gap:10px; }
   .docs-loading .docs-spinner {
@@ -244,9 +244,9 @@
   }
 
   /* Search Panel */
-  .search-panel { flex:1; display:flex; flex-direction:column; background:var(--bg-color); }
+  .search-panel { flex:1; display:flex; flex-direction:column; background:var(--bg-color); min-height:0; }
 
-  .search-bar { padding:20px; border-bottom:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:10px; flex-wrap:wrap; }
+  .search-bar { padding:20px; background:transparent; display:flex; gap:10px; }
   .search-bar input {
     flex:1; min-width:200px; background:transparent; border:1px solid var(--border-color); border-radius:8px;
     padding:12px 16px; color:var(--text-color); font-size:15px; outline:none; font-family:inherit;
@@ -307,7 +307,8 @@
   .ss-reset.dirty:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
 
   .results { flex:1; overflow-y:auto; padding:20px; }
-  .results-empty { color:#444; font-size:15px; text-align:center; margin-top:80px; }
+  .results-empty { color:#fff; font-size:15px; text-align:center; margin-top:80px; }
+  .results-empty::before { content:'\f002'; font-family:'Font Awesome 6 Free'; font-weight:900; display:block; font-size:28px; color:#fff; margin-bottom:12px; }
 
   .result-card {
     background:var(--glass-bg); backdrop-filter:blur(10px); border:1px solid var(--border-color); border-radius:12px;
@@ -316,12 +317,13 @@
   .result-card:hover:not(.highlight) { background:rgba(var(--primary-neon-rgb),0.03); }
   .result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .result-filename { font-size:13px; font-weight:600; color:var(--primary-neon); word-break:break-all; }
+  .result-filename:hover { color:var(--tx-color); }
   .result-score {
     font-size:11px; padding:3px 8px; border-radius:6px; font-weight:600;
     white-space:nowrap; margin-left:12px;
   }
   .score-high { background:rgba(40,167,69,0.15); color:var(--operational-glow); }
-  .score-mid { background:rgba(255,193,7,0.15); color:var(--degraded-glow); }
+  .score-mid { background:rgba(var(--tx-color-rgb),0.15); color:var(--tx-color); }
   .score-low { background:rgba(255,7,58,0.15); color:var(--critical-glow); }
 
   .result-method {
@@ -399,7 +401,7 @@
   @keyframes spin { to{transform:rotate(360deg)} }
 
   /* Chat Panel */
-  .chat-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); }
+  .chat-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
   .chat-panel.active { display:flex; }
   .search-panel.active { display:flex; }
   .search-panel { display:none; }
@@ -414,7 +416,8 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   .chat-messages { flex:1; overflow-y:auto; padding:20px; }
-  .chat-empty { color:#444; font-size:15px; text-align:center; margin-top:80px; }
+  .chat-empty { color:#fff; font-size:15px; text-align:center; margin-top:80px; }
+  .chat-empty::before { content:'\f075'; font-family:'Font Awesome 6 Free'; font-weight:900; display:block; font-size:28px; color:var(--tx-color); margin-bottom:12px; opacity:0.6; }
 
   .chat-msg { margin-bottom:16px; display:flex; gap:10px; }
   .chat-msg.user { justify-content:flex-end; }
@@ -465,7 +468,7 @@
     border-color:var(--operational-glow); box-shadow:0 0 12px rgba(40,167,69,0.3);
   }
 
-  .chat-input-bar { padding:16px 20px; border-top:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:10px; }
+  .chat-input-bar { padding:16px 20px; background:transparent; display:flex; gap:10px; }
   .chat-input-bar input {
     flex:1; background:transparent; border:1px solid var(--border-color); border-radius:8px;
     padding:12px 16px; color:var(--text-color); font-size:15px; outline:none; font-family:inherit;
@@ -478,7 +481,7 @@
     padding:12px 24px; font-size:14px; cursor:pointer; font-weight:500; font-family:inherit;
     transition:all .2s;
   }
-  .chat-input-bar button:hover { background:var(--primary-neon); color:#0a0e17; }
+  .chat-input-bar button:hover { background:var(--tx-color); color:#fff; border-color:var(--tx-color); box-shadow:0 0 12px rgba(var(--tx-color-rgb),0.4); }
   .chat-input-bar button:disabled { background:transparent; border-color:var(--border-color); color:#555; cursor:not-allowed; }
   .chat-thinking { color:#666; font-size:13px; padding:8px 16px; }
   .chat-thinking .dots::after { content:''; animation:dots 1.5s infinite; }
@@ -535,12 +538,12 @@
   .pw-change-form .pw-msg.success { color:var(--operational-glow); }
 
   /* Roles Panel */
-  .roles-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); }
+  .roles-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
   .roles-panel.active { display:flex; }
-  .roles-header { padding:12px 20px; border-bottom:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:8px; align-items:center; }
+  .roles-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; }
   .roles-header button {
-    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:6px;
-    padding:6px 14px; font-size:12px; cursor:pointer; font-family:inherit; transition:all .2s;
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
   }
   .roles-header button:hover { background:var(--primary-neon); color:#0a0e17; }
   .roles-list { flex:1; overflow-y:auto; padding:16px 20px; }
@@ -591,22 +594,28 @@
   .role-create-card button.cancel:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
 
   /* Audit Panel */
-  .audit-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); }
+  .audit-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
   .audit-panel.active { display:flex; }
-  .audit-header { padding:12px 20px; border-bottom:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .audit-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .audit-header select, .audit-header input {
-    background:#0d1117; border:1px solid var(--border-color); border-radius:6px;
-    padding:6px 10px; color:var(--text-color); font-size:12px; font-family:inherit; outline:none;
+    background:#0d1117; border:1px solid var(--border-color); border-radius:8px;
+    padding:12px 16px; color:var(--text-color); font-size:15px; font-family:inherit; outline:none;
   }
   .audit-header select:focus, .audit-header input:focus { border-color:var(--primary-neon); }
   .audit-header select option { background:#0d1117; }
   .audit-header button {
-    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:6px;
-    padding:6px 14px; font-size:12px; cursor:pointer; font-family:inherit; transition:all .2s;
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
   }
   .audit-header button:hover { background:var(--primary-neon); color:#0a0e17; }
   .audit-list { flex:1; overflow-y:auto; padding:16px 20px; }
   .audit-empty { color:#444; font-size:14px; text-align:center; margin-top:60px; }
+  .audit-spinner { text-align:center; padding:40px; color:var(--primary-neon); font-size:14px; }
+  .audit-spinner .audit-spin-icon {
+    width:22px; height:22px; border:2px solid rgba(var(--primary-neon-rgb),0.15);
+    border-top-color:var(--primary-neon); border-radius:50%; animation:spin .7s linear infinite;
+    display:inline-block; margin-bottom:10px;
+  }
   .audit-entry {
     background:var(--glass-bg); border:1px solid var(--border-color); border-radius:8px;
     padding:10px 14px; margin-bottom:6px; font-size:12px; transition:border-color .2s;
@@ -623,15 +632,27 @@
   .audit-target { color:var(--primary-neon); font-weight:500; word-break:break-all; }
   .audit-user { color:#888; font-size:11px; margin-top:2px; }
   .audit-user i { font-size:9px; margin-right:3px; }
+  .audit-pagination {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 20px; font-size:11px; color:#555; flex-shrink:0;
+    border-top:1px solid var(--border-color);
+  }
+  .audit-pag-controls { display:flex; align-items:center; gap:8px; }
+  .audit-pagination button {
+    background:none; border:1px solid var(--border-color); color:#aaa;
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit;
+  }
+  .audit-pagination button:hover:not(:disabled) { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .audit-pagination button:disabled { opacity:.3; cursor:not-allowed; }
 
 
   /* User Admin Panel */
-  .admin-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); }
+  .admin-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
   .admin-panel.active { display:flex; }
-  .admin-header { padding:12px 20px; border-bottom:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:8px; align-items:center; }
+  .admin-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; }
   .admin-header button {
-    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:6px;
-    padding:6px 14px; font-size:12px; cursor:pointer; font-family:inherit; transition:all .2s;
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
   }
   .admin-header button:hover { background:var(--primary-neon); color:#0a0e17; }
   .admin-list { flex:1; overflow-y:auto; padding:16px 20px; }
@@ -886,7 +907,7 @@
   <div class="search-panel active" id="search-panel">
     <div class="search-bar">
       <input type="text" id="query-input" placeholder="Search your documents..." autocomplete="off">
-      <button id="search-btn" onclick="doSearch()">Search</button>
+      <button id="search-btn" onclick="doSearch()"><i class="fa-solid fa-arrow-up" id="search-btn-icon"></i></button>
       <button class="search-settings-btn" id="settings-btn" title="Search settings"><i class="fa-solid fa-cog"></i></button>
     </div>
     <div class="search-settings-panel" id="search-settings-panel">
@@ -947,18 +968,30 @@
 
   <div class="audit-panel" id="audit-panel">
     <div class="audit-header">
-      <select id="audit-action-filter">
+      <select id="audit-action-filter" onchange="auditReset()">
         <option value="">All actions</option>
         <option value="upload">Upload</option>
         <option value="delete">Delete</option>
         <option value="delete_orphan">Delete orphan</option>
         <option value="retry_convert">Retry convert</option>
       </select>
+      <select id="audit-days-filter" onchange="auditReset()">
+        <option value="1" selected>Last 24h</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
       <input type="text" id="audit-doc-filter" placeholder="Filter by document..." style="flex:1;min-width:120px">
-      <button id="audit-load-btn" onclick="loadAuditLogs()"><i class="fa-solid fa-magnifying-glass" id="audit-load-icon"></i> <span id="audit-load-label">Load</span></button>
     </div>
     <div class="audit-list" id="audit-list">
-      <div class="audit-empty"><i class="fa-solid fa-clock-rotate-left"></i> Click Load to view audit trail</div>
+      <div class="audit-spinner"><div class="audit-spin-icon"></div><br>Loading audit logs…</div>
+    </div>
+    <div class="audit-pagination" id="audit-pagination" style="display:none">
+      <span id="audit-count"></span>
+      <div class="audit-pag-controls">
+        <button id="audit-load-more" onclick="loadAuditMore()"><i class="fa-solid fa-angles-down"></i> Load more</button>
+      </div>
     </div>
   </div>
 
@@ -993,6 +1026,7 @@ const docsSection = document.getElementById('docs-section');
 const results = document.getElementById('results');
 const queryInput = document.getElementById('query-input');
 const searchBtn = document.getElementById('search-btn');
+searchBtn.style.opacity = '0.3';
 const docsList = document.getElementById('docs-list');
 const docCount = document.getElementById('doc-count');
 const docSearch = document.getElementById('doc-search');
@@ -1096,48 +1130,100 @@ function toggleAudit() {
   if (auditOpen) loadAuditLogs();
 }
 
-async function loadAuditLogs() {
-  const btn = document.getElementById('audit-load-btn');
-  const icon = document.getElementById('audit-load-icon');
-  const label = document.getElementById('audit-load-label');
-  btn.disabled = true;
-  icon.className = 'fa-solid fa-spinner fa-spin';
-  label.textContent = '';
-  const list = document.getElementById('audit-list');
-  list.innerHTML = '<div class="audit-empty">Loading…</div>';
+let _auditCursor = null;
+let _auditTotal = 0;
+
+function auditReset() {
+  _auditCursor = null;
+  _auditTotal = 0;
+  loadAuditLogs(false);
+}
+
+function _auditParams() {
   const params = new URLSearchParams();
   const action = document.getElementById('audit-action-filter').value;
   const target = document.getElementById('audit-doc-filter').value.trim();
+  const days = document.getElementById('audit-days-filter').value;
   if (action) params.set('action', action);
   if (target) params.set('target_key', target);
-  params.set('limit', '200');
+  params.set('days', days);
+  params.set('limit', '50');
+  return params;
+}
+
+function _renderAuditEntry(log) {
+  const user = log.user || {};
+  const name = user.display_name || user.email || user.id || 'unknown';
+  const time = new Date(log.timestamp).toLocaleString();
+  return `<div class="audit-entry">
+    <div class="audit-entry-header">
+      <span class="audit-action ${log.action}">${log.action.replace('_', ' ')}</span>
+      <span class="audit-time">${time}</span>
+    </div>
+    <div class="audit-target">${escapeHtml(log.target_key)}</div>
+    <div class="audit-user"><i class="fa-solid fa-user"></i>${escapeHtml(name)}${log.ip_address ? ' \u00b7 ' + log.ip_address : ''}${user.role && user.role !== 'unknown' ? ' \u00b7 ' + user.role : ''}</div>
+  </div>`;
+}
+
+function _updateAuditPagination() {
+  const pag = document.getElementById('audit-pagination');
+  const btn = document.getElementById('audit-load-more');
+  document.getElementById('audit-count').textContent = _auditTotal + ' log' + (_auditTotal === 1 ? '' : 's');
+  pag.style.display = _auditTotal > 0 ? '' : 'none';
+  btn.disabled = !_auditCursor;
+  btn.innerHTML = _auditCursor ? '<i class="fa-solid fa-angles-down"></i> Load more' : 'All loaded';
+}
+
+async function loadAuditLogs(append) {
+  const list = document.getElementById('audit-list');
+  if (!append) {
+    list.innerHTML = '<div class="audit-spinner"><div class="audit-spin-icon"></div><br>Loading audit logs\u2026</div>';
+    _auditCursor = null;
+    _auditTotal = 0;
+  }
+  const params = _auditParams();
+  if (_auditCursor) params.set('cursor', _auditCursor);
   try {
     const resp = await fetch(RK_API + '/api/audit?' + params.toString());
+    if (resp.status === 401) {
+      if (!append) list.innerHTML = '<div class="audit-empty">Session expired — please reload the page</div>';
+      _updateAuditPagination();
+      return;
+    }
     const data = await resp.json();
-    if (!data.logs || data.logs.length === 0) {
-      list.innerHTML = '<div class="audit-empty">No audit logs found</div>';
+    _auditCursor = data.next_cursor || null;
+    if (!append) {
+      if (!data.logs || data.logs.length === 0) {
+        list.innerHTML = '<div class="audit-empty">No audit logs found</div>';
+        _auditTotal = 0;
+      } else {
+        list.innerHTML = data.logs.map(_renderAuditEntry).join('');
+        _auditTotal = data.logs.length;
+      }
     } else {
-    list.innerHTML = data.logs.map(log => {
-      const user = log.user || {};
-      const name = user.display_name || user.email || user.id || 'unknown';
-      const time = new Date(log.timestamp).toLocaleString();
-      return `<div class="audit-entry">
-        <div class="audit-entry-header">
-          <span class="audit-action ${log.action}">${log.action.replace('_', ' ')}</span>
-          <span class="audit-time">${time}</span>
-        </div>
-        <div class="audit-target">${escapeHtml(log.target_key)}</div>
-        <div class="audit-user"><i class="fa-solid fa-user"></i>${escapeHtml(name)}${log.ip_address ? ' · ' + log.ip_address : ''}${user.role && user.role !== 'unknown' ? ' · ' + user.role : ''}</div>
-      </div>`;
-    }).join('');
+      if (data.logs && data.logs.length > 0) {
+        list.insertAdjacentHTML('beforeend', data.logs.map(_renderAuditEntry).join(''));
+        _auditTotal += data.logs.length;
+      }
     }
   } catch {
-    list.innerHTML = '<div class="audit-empty">Failed to load audit logs</div>';
+    if (!append) list.innerHTML = '<div class="audit-empty">Failed to load audit logs</div>';
   }
-  btn.disabled = false;
-  icon.className = 'fa-solid fa-magnifying-glass';
-  label.textContent = 'Load';
+  _updateAuditPagination();
 }
+
+async function loadAuditMore() {
+  const btn = document.getElementById('audit-load-more');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+  await loadAuditLogs(true);
+}
+
+let _auditDocTimer;
+document.getElementById('audit-doc-filter').addEventListener('input', () => {
+  clearTimeout(_auditDocTimer);
+  _auditDocTimer = setTimeout(auditReset, 400);
+});
 
 // ── Auth ──────────────────────────────────────────────────
 
@@ -1806,6 +1892,14 @@ async function retryConvert(key) {
 // ── Search ──────────────────────────────────────────
 
 queryInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !searchBtn.disabled) doSearch(); });
+queryInput.addEventListener('input', () => {
+  const hasText = queryInput.value.trim().length > 0;
+  const icon = document.getElementById('search-btn-icon');
+  if (!_searchActive) {
+    icon.className = hasText ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-up';
+    searchBtn.style.opacity = hasText ? '1' : '0.3';
+  }
+});
 
 const thinkingPanel = document.getElementById('search-thinking');
 const thinkingSteps = document.getElementById('thinking-steps');
@@ -1958,11 +2052,22 @@ function getActiveDocKeys() {
   return filtered.map(d => d.kb_key || d.key);
 }
 
+let _searchAbort = null;
+let _searchActive = false;
+
 async function doSearch() {
+  if (_searchActive) {
+    if (_searchAbort) _searchAbort.abort();
+    return;
+  }
   const q = queryInput.value.trim();
   if (!q) return;
 
-  searchBtn.disabled = true;
+  _searchAbort = new AbortController();
+  _searchActive = true;
+  const icon = document.getElementById('search-btn-icon');
+  icon.className = 'fa-solid fa-stop';
+  searchBtn.style.opacity = '1';
   results.innerHTML = '';
   thinkingSteps.innerHTML = '';
   thinkingPanel.classList.remove('collapsed', 'expanded');
@@ -1980,6 +2085,7 @@ async function doSearch() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
+      signal: _searchAbort.signal,
     });
 
     const reader = resp.body.getReader();
@@ -1991,7 +2097,6 @@ async function doSearch() {
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
 
-      // Parse SSE events from buffer
       let idx;
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
         const chunk = buffer.slice(0, idx);
@@ -2017,12 +2122,20 @@ async function doSearch() {
     }
 
     if (!results.innerHTML) results.innerHTML = '<div class="results-empty">No results found</div>';
-  } catch {
-    finishThinking();
-    results.innerHTML = '<div class="results-empty">Search failed — check server</div>';
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      addThinkingStep('Stopped by user');
+      finishThinking();
+    } else {
+      finishThinking();
+      results.innerHTML = '<div class="results-empty">Search failed \u2014 check server</div>';
+    }
   }
 
-  searchBtn.disabled = false;
+  _searchActive = false;
+  _searchAbort = null;
+  icon.className = 'fa-solid fa-arrow-up';
+  searchBtn.style.opacity = queryInput.value.trim() ? '1' : '0.3';
 }
 
 function renderMarkdown(text) {

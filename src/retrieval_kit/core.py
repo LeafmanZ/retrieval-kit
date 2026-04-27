@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint, Flask, request, jsonify, render_template,
@@ -402,6 +402,25 @@ def create_blueprint(config):
         if tools:
             kwargs["toolConfig"] = {"tools": tools}
         return bedrock_runtime.converse(**kwargs)
+
+    def _truncate_tool_result(result, max_text=300, max_results=5):
+        """Trim tool results before sending back to the LLM for routing decisions."""
+        out = {}
+        if "results" in result:
+            trimmed = []
+            for r in result["results"][:max_results]:
+                t = {k: v for k, v in r.items() if k != "text"}
+                if "text" in r:
+                    t["text"] = r["text"][:max_text] + ("…" if len(r.get("text", "")) > max_text else "")
+                trimmed.append(t)
+            out["results"] = trimmed
+            out["total_count"] = len(result["results"])
+        elif "documents" in result:
+            out["documents"] = [{"key": d.get("key", "")} for d in result["documents"][:max_results]]
+            out["total_count"] = len(result["documents"])
+        else:
+            out = result
+        return out
 
     # ── Search tool executors ──────────────────────────────
 
@@ -820,33 +839,47 @@ def create_blueprint(config):
         action = request.args.get("action")
         target_key = request.args.get("target_key")
         user_id = request.args.get("user_id")
-        start_date = request.args.get("start_date")  # YYYY/MM/DD
-        end_date = request.args.get("end_date")        # YYYY/MM/DD
-        limit = min(int(request.args.get("limit", 100)), 500)
-        prefix = start_date + "/" if start_date else ""
+        days = min(int(request.args.get("days", 7)), 365)
+        limit = min(int(request.args.get("limit", 50)), 200)
+        cursor = request.args.get("cursor")  # S3 key to start after
+
+        today = datetime.now(timezone.utc).date()
+        date_prefixes = [
+            (today - timedelta(days=d)).strftime("%Y/%m/%d") + "/"
+            for d in range(days)
+        ]
+
         logs = []
+        next_cursor = None
+        found_cursor = cursor is None
         try:
-            for page in s3.get_paginator("list_objects_v2").paginate(Bucket=AUDIT_BUCKET, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    key = obj["Key"]
-                    if key.startswith("_"):
-                        continue
-                    if end_date:
-                        date_part = "/".join(key.split("/")[:3])
-                        if date_part > end_date:
+            for dp in date_prefixes:
+                paginator_kwargs = {"Bucket": AUDIT_BUCKET, "Prefix": dp}
+                for page in s3.get_paginator("list_objects_v2").paginate(**paginator_kwargs):
+                    for obj in page.get("Contents", []):
+                        key = obj["Key"]
+                        if key.startswith("_"):
                             continue
-                    if action and f"_{action}_" not in key:
-                        continue
-                    if target_key and target_key.lower().replace(".", "_") not in key.lower():
-                        continue
-                    try:
-                        body = s3.get_object(Bucket=AUDIT_BUCKET, Key=key)["Body"].read()
-                        entry = json.loads(body)
-                        if user_id and entry.get("user", {}).get("id") != user_id:
+                        if not found_cursor:
+                            if key == cursor:
+                                found_cursor = True
                             continue
-                        logs.append(entry)
-                    except Exception:
-                        continue
+                        if action and f"_{action}_" not in key:
+                            continue
+                        if target_key and target_key.lower().replace(".", "_") not in key.lower():
+                            continue
+                        try:
+                            body = s3.get_object(Bucket=AUDIT_BUCKET, Key=key)["Body"].read()
+                            entry = json.loads(body)
+                            if user_id and entry.get("user", {}).get("id") != user_id:
+                                continue
+                            entry["_s3_key"] = key
+                            logs.append(entry)
+                        except Exception:
+                            continue
+                        if len(logs) > limit:
+                            next_cursor = logs.pop()["_s3_key"]
+                            break
                     if len(logs) >= limit:
                         break
                 if len(logs) >= limit:
@@ -854,7 +887,9 @@ def create_blueprint(config):
         except Exception as e:
             return jsonify(error=str(e)), 500
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        return jsonify(logs=logs, count=len(logs)), 200
+        for log in logs:
+            log.pop("_s3_key", None)
+        return jsonify(logs=logs, count=len(logs), next_cursor=next_cursor), 200
 
     @bp.route("/api/audit/document/<path:key>", methods=["GET"])
     def document_audit_history(key):
@@ -939,7 +974,7 @@ def create_blueprint(config):
             stop_reason = resp["stopReason"]
             all_results = []
             tool_round = 0
-            MAX_TOOL_ROUNDS = 4
+            MAX_TOOL_ROUNDS = 2
             while stop_reason == "tool_use" and tool_round < MAX_TOOL_ROUNDS:
                 tool_round += 1
                 tool_names = [b["toolUse"]["name"] for b in output["content"] if "toolUse" in b]
@@ -958,7 +993,7 @@ def create_blueprint(config):
                         count = len(result.get("results", result.get("documents", [])))
                         yield _sse("tool_result", {"tool": name, "input": inp, "result": result})
                         yield _sse("status", {"message": f"{friendly} returned {count} result{'s' if count != 1 else ''}"})
-                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": result}]}})
+                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": _truncate_tool_result(result)}]}})
                         all_results.append({"tool": name, "input": inp, "result": result})
                     except Exception as e:
                         logger.error("Smart search tool %s failed: %s", name, e)
@@ -996,7 +1031,7 @@ def create_blueprint(config):
             stop_reason = orch_resp["stopReason"]
             retrieved_context = []
             tool_round = 0
-            MAX_TOOL_ROUNDS = 4
+            MAX_TOOL_ROUNDS = 2
             while stop_reason == "tool_use" and tool_round < MAX_TOOL_ROUNDS:
                 tool_round += 1
                 tool_names = [b["toolUse"]["name"] for b in orch_output["content"] if "toolUse" in b]
@@ -1015,7 +1050,7 @@ def create_blueprint(config):
                         count = len(result.get("results", result.get("documents", [])))
                         yield _sse("tool_result", {"tool": name, "input": inp, "result": result})
                         yield _sse("status", {"message": f"{friendly} returned {count} result{'s' if count != 1 else ''}"})
-                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": result}]}})
+                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": _truncate_tool_result(result)}]}})
                         retrieved_context.append({"tool": name, "input": inp, "result": result})
                     except Exception as e:
                         logger.error("Tool %s failed: %s", name, e)
@@ -1247,11 +1282,22 @@ def create_standalone_app():
     }
 
     app = Flask(__name__)
-    app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
+    _secret = os.getenv("SECRET_KEY")
+    if not _secret:
+        _secret_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".secret_key")
+        try:
+            with open(_secret_path) as f:
+                _secret = f.read().strip()
+        except FileNotFoundError:
+            _secret = os.urandom(32).hex()
+            with open(_secret_path, "w") as f:
+                f.write(_secret)
+    app.secret_key = _secret
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
     login_manager = LoginManager()
     login_manager.init_app(app)
+    app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=7)
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -1312,7 +1358,7 @@ def create_standalone_app():
             return jsonify(error="Access denied — invalid email or password"), 401
         if not user_data.get("is_active", True):
             return jsonify(error="Access denied — your account is pending activation by a system administrator"), 403
-        login_user(User(user_data))
+        login_user(User(user_data), remember=True)
         user_data["last_login"] = datetime.now(timezone.utc).isoformat()
         user_data["last_seen"] = user_data["last_login"]
         store.save(user_data)

@@ -30,7 +30,7 @@
     animation:moveGrid 90s linear infinite;
     z-index:-1; pointer-events:none;
   }
-  @keyframes moveGrid { from{background-position:0 0} to{background-position:50px 50px} }
+  @keyframes moveGrid { from{background-position:0 0} to{background-position:500px 500px} }
 
   .login-box {
     background:var(--glass-bg); border:1px solid var(--border-color); border-radius:16px;
@@ -107,7 +107,7 @@ const RK_API = '{{ api_base }}';
 function showError(text) {
   const el = document.getElementById('auth-msg');
   el.textContent = text;
-  el.style.display = '';
+  el.style.display = 'block';
 }
 
 async function submitAuth() {
@@ -132,7 +132,7 @@ async function submitAuth() {
     const data = await resp.json();
 
     if (!resp.ok) {
-      showError(data.error || 'Access denied');
+      showError(data.error || 'Login failed');
       btn.disabled = false;
       btn.textContent = 'Sign In';
       return;

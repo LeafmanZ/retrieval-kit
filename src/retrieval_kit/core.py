@@ -7,15 +7,25 @@ import subprocess
 import tempfile
 import logging
 import threading
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint, Flask, request, jsonify, render_template,
-    Response, stream_with_context,
+    Response, stream_with_context, redirect,
 )
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+import csv
+import importlib.resources as pkg_resources
+
 logger = logging.getLogger(__name__)
+
+
+def _load_attributes():
+    csv_path = pkg_resources.files("retrieval_kit") / "attributes.csv"
+    with csv_path.open("r") as f:
+        return list(csv.DictReader(f))
 
 # ── Format constants ────────────────────────────────────────
 
@@ -215,9 +225,11 @@ def create_blueprint(config):
     _auth = config.get("auth_decorator", lambda attr: lambda f: f)
     _auth_map = config.get("route_auth_map", {})
     _resolve_user_attrs = config.get("user_attributes_resolver", None)
+    _get_current_user = config.get("get_current_user", lambda: {"id": "anonymous", "email": "", "display_name": "Anonymous", "role": "unknown"})
 
     BUCKET = f"{app_prefix}retrieval-kit-source-documents"
     ORIGINALS_BUCKET = f"{app_prefix}retrieval-kit-original-documents"
+    AUDIT_BUCKET = f"{app_prefix}retrieval-kit-audit-logs"
 
     _pkg_dir = os.path.dirname(os.path.abspath(__file__))
     bp = Blueprint(
@@ -226,6 +238,37 @@ def create_blueprint(config):
         static_url_path="/rk-static",
         template_folder=os.path.join(_pkg_dir, "templates"),
     )
+
+    # ── Audit helpers ──────────────────────────────────────
+
+    def _write_audit_log(action, target_key, detail=None):
+        try:
+            now = datetime.now(timezone.utc)
+            user = _get_current_user()
+            ip = request.remote_addr if request else None
+            stem = re.sub(r'[^a-z0-9]+', '_', target_key.lower()).strip('_')[:60]
+            s3_key = f"{now.strftime('%Y/%m/%d')}/{now.strftime('%Y%m%dT%H%M%S')}_{action}_{stem}.json"
+            payload = {
+                "timestamp": now.isoformat(),
+                "action": action,
+                "target_key": target_key,
+                "user": user,
+                "ip_address": ip,
+                "detail": detail or {},
+            }
+            s3.put_object(Bucket=AUDIT_BUCKET, Key=s3_key, Body=json.dumps(payload), ContentType="application/json")
+        except Exception as e:
+            logger.error("Audit log write failed: %s", e)
+
+    def _uploader_metadata():
+        user = _get_current_user()
+        return {
+            "uploaded-by": user.get("email", "") or user.get("display_name", ""),
+            "uploaded-by-id": user.get("id", ""),
+            "uploaded-by-role": user.get("role", ""),
+            "uploaded-at": datetime.now(timezone.utc).isoformat(),
+            "uploaded-from-ip": request.remote_addr or "",
+        }
 
     # ── S3 / Bedrock helpers (closure over clients) ────────
 
@@ -359,6 +402,25 @@ def create_blueprint(config):
         if tools:
             kwargs["toolConfig"] = {"tools": tools}
         return bedrock_runtime.converse(**kwargs)
+
+    def _truncate_tool_result(result, max_text=300, max_results=5):
+        """Trim tool results before sending back to the LLM for routing decisions."""
+        out = {}
+        if "results" in result:
+            trimmed = []
+            for r in result["results"][:max_results]:
+                t = {k: v for k, v in r.items() if k != "text"}
+                if "text" in r:
+                    t["text"] = r["text"][:max_text] + ("…" if len(r.get("text", "")) > max_text else "")
+                trimmed.append(t)
+            out["results"] = trimmed
+            out["total_count"] = len(result["results"])
+        elif "documents" in result:
+            out["documents"] = [{"key": d.get("key", "")} for d in result["documents"][:max_results]]
+            out["total_count"] = len(result["documents"])
+        else:
+            out = result
+        return out
 
     # ── Search tool executors ──────────────────────────────
 
@@ -517,10 +579,12 @@ def create_blueprint(config):
         else:
             kb_data = data
             s3_key = original_key
+        meta = _uploader_metadata()
         try:
             s3.put_object(
                 Bucket=BUCKET, Key=s3_key, Body=kb_data,
                 ContentType="application/pdf" if raw_ext in CONVERT_TO_PDF else (f.content_type or "application/octet-stream"),
+                Metadata=meta,
             )
         except Exception as e:
             return {"error": f"Failed to upload to knowledge base: {e}"}, 500
@@ -528,6 +592,7 @@ def create_blueprint(config):
             s3.put_object(
                 Bucket=ORIGINALS_BUCKET, Key=original_key, Body=data,
                 ContentType=f.content_type or "application/octet-stream",
+                Metadata=meta,
             )
         except Exception as e:
             try:
@@ -535,6 +600,10 @@ def create_blueprint(config):
             except Exception:
                 pass
             return {"error": f"Failed to save original: {e}"}, 500
+        _write_audit_log("upload", original_key, {
+            "kb_key": s3_key, "size": len(data),
+            "converted": raw_ext in CONVERT_TO_PDF, "content_type": f.content_type,
+        })
         return {"message": f"Uploaded → s3://{BUCKET}/{s3_key}", "key": s3_key, "original_key": original_key}, 200
 
     # ── Routes ────────────────────────────────────────────
@@ -639,7 +708,7 @@ def create_blueprint(config):
                 ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
                 converted = ext in CONVERT_TO_PDF
                 kb_key = f"{key.rsplit('.', 1)[0]}_{ext}.pdf" if converted else key
-                docs.append({
+                doc_entry = {
                     "key": key,
                     "size": obj["Size"],
                     "last_modified": obj["LastModified"].isoformat(),
@@ -655,7 +724,19 @@ def create_blueprint(config):
                             "ResponseContentDisposition": f'attachment; filename="{key}"',
                         }, ExpiresIn=3600,
                     ),
-                })
+                }
+                try:
+                    head = s3.head_object(Bucket=ORIGINALS_BUCKET, Key=key)
+                    meta = head.get("Metadata", {})
+                    if meta.get("uploaded-by"):
+                        doc_entry["uploaded_by"] = meta["uploaded-by"]
+                        doc_entry["uploaded_by_id"] = meta.get("uploaded-by-id", "")
+                        doc_entry["uploaded_by_role"] = meta.get("uploaded-by-role", "")
+                        doc_entry["uploaded_at"] = meta.get("uploaded-at", "")
+                        doc_entry["uploaded_from_ip"] = meta.get("uploaded-from-ip", "")
+                except Exception:
+                    pass
+                docs.append(doc_entry)
         return jsonify(documents=docs), 200
 
     @bp.route("/api/documents/<path:key>", methods=["DELETE"])
@@ -665,16 +746,18 @@ def create_blueprint(config):
             s3.delete_object(Bucket=ORIGINALS_BUCKET, Key=key)
         except s3.exceptions.ClientError:
             return jsonify(error="Document not found"), 404
-        stem = os.path.splitext(key)[0]
+        ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+        stem = key.rsplit(".", 1)[0] if "." in key else key
+        # Delete the source-bucket copy: either the original key or the converted {stem}_{ext}.pdf
+        if ext in CONVERT_TO_PDF:
+            kb_key = f"{stem}_{ext}.pdf"
+        else:
+            kb_key = key
         try:
-            s3.delete_object(Bucket=BUCKET, Key=key)
+            s3.delete_object(Bucket=BUCKET, Key=kb_key)
         except Exception:
             pass
-        if not key.endswith(".pdf"):
-            try:
-                s3.delete_object(Bucket=BUCKET, Key=f"{stem}.pdf")
-            except Exception:
-                pass
+        _write_audit_log("delete", key)
         return jsonify(message=f"Deleted {key}"), 200
 
     @bp.route("/api/documents/<path:key>/retry", methods=["POST"])
@@ -701,12 +784,14 @@ def create_blueprint(config):
             s3.put_object(Bucket=BUCKET, Key=s3_key, Body=kb_data, ContentType=content_type)
         except Exception as e:
             return jsonify(error=f"Upload to KB failed: {e}"), 500
+        _write_audit_log("retry_convert", key, {"kb_key": s3_key})
         return jsonify(message=f"Pushed to KB: {s3_key}", kb_key=s3_key), 200
 
     @bp.route("/api/orphans/<path:key>", methods=["DELETE"])
     def delete_orphan(key):
         try:
             s3.delete_object(Bucket=ORIGINALS_BUCKET, Key=key)
+            _write_audit_log("delete_orphan", key)
             return jsonify(message=f"Removed orphan: {key}"), 200
         except Exception as e:
             return jsonify(error=str(e)), 500
@@ -748,6 +833,84 @@ def create_blueprint(config):
             ), 200
         except Exception as e:
             return jsonify(error=str(e)), 500
+
+    @bp.route("/api/audit", methods=["GET"])
+    def list_audit_logs():
+        action = request.args.get("action")
+        target_key = request.args.get("target_key")
+        user_id = request.args.get("user_id")
+        days = min(int(request.args.get("days", 7)), 365)
+        limit = min(int(request.args.get("limit", 50)), 200)
+        cursor = request.args.get("cursor")  # S3 key to start after
+
+        today = datetime.now(timezone.utc).date()
+        date_prefixes = [
+            (today - timedelta(days=d)).strftime("%Y/%m/%d") + "/"
+            for d in range(days)
+        ]
+
+        logs = []
+        next_cursor = None
+        found_cursor = cursor is None
+        try:
+            for dp in date_prefixes:
+                paginator_kwargs = {"Bucket": AUDIT_BUCKET, "Prefix": dp}
+                for page in s3.get_paginator("list_objects_v2").paginate(**paginator_kwargs):
+                    for obj in page.get("Contents", []):
+                        key = obj["Key"]
+                        if key.startswith("_"):
+                            continue
+                        if not found_cursor:
+                            if key == cursor:
+                                found_cursor = True
+                            continue
+                        if action and f"_{action}_" not in key:
+                            continue
+                        if target_key and target_key.lower().replace(".", "_") not in key.lower():
+                            continue
+                        try:
+                            body = s3.get_object(Bucket=AUDIT_BUCKET, Key=key)["Body"].read()
+                            entry = json.loads(body)
+                            if user_id and entry.get("user", {}).get("id") != user_id:
+                                continue
+                            entry["_s3_key"] = key
+                            logs.append(entry)
+                        except Exception:
+                            continue
+                        if len(logs) > limit:
+                            next_cursor = logs.pop()["_s3_key"]
+                            break
+                    if len(logs) >= limit:
+                        break
+                if len(logs) >= limit:
+                    break
+        except Exception as e:
+            return jsonify(error=str(e)), 500
+        logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        for log in logs:
+            log.pop("_s3_key", None)
+        return jsonify(logs=logs, count=len(logs), next_cursor=next_cursor), 200
+
+    @bp.route("/api/audit/document/<path:key>", methods=["GET"])
+    def document_audit_history(key):
+        stem = re.sub(r'[^a-z0-9]+', '_', key.lower()).strip('_')
+        logs = []
+        try:
+            for page in s3.get_paginator("list_objects_v2").paginate(Bucket=AUDIT_BUCKET):
+                for obj in page.get("Contents", []):
+                    if obj["Key"].startswith("_") or stem not in obj["Key"]:
+                        continue
+                    try:
+                        body = s3.get_object(Bucket=AUDIT_BUCKET, Key=obj["Key"])["Body"].read()
+                        entry = json.loads(body)
+                        if entry.get("target_key") == key:
+                            logs.append(entry)
+                    except Exception:
+                        continue
+        except Exception as e:
+            return jsonify(error=str(e)), 500
+        logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return jsonify(logs=logs, document=key, count=len(logs)), 200
 
     @bp.route("/api/query", methods=["POST"])
     def query():
@@ -811,7 +974,7 @@ def create_blueprint(config):
             stop_reason = resp["stopReason"]
             all_results = []
             tool_round = 0
-            MAX_TOOL_ROUNDS = 4
+            MAX_TOOL_ROUNDS = 2
             while stop_reason == "tool_use" and tool_round < MAX_TOOL_ROUNDS:
                 tool_round += 1
                 tool_names = [b["toolUse"]["name"] for b in output["content"] if "toolUse" in b]
@@ -830,7 +993,7 @@ def create_blueprint(config):
                         count = len(result.get("results", result.get("documents", [])))
                         yield _sse("tool_result", {"tool": name, "input": inp, "result": result})
                         yield _sse("status", {"message": f"{friendly} returned {count} result{'s' if count != 1 else ''}"})
-                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": result}]}})
+                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": _truncate_tool_result(result)}]}})
                         all_results.append({"tool": name, "input": inp, "result": result})
                     except Exception as e:
                         logger.error("Smart search tool %s failed: %s", name, e)
@@ -868,7 +1031,7 @@ def create_blueprint(config):
             stop_reason = orch_resp["stopReason"]
             retrieved_context = []
             tool_round = 0
-            MAX_TOOL_ROUNDS = 4
+            MAX_TOOL_ROUNDS = 2
             while stop_reason == "tool_use" and tool_round < MAX_TOOL_ROUNDS:
                 tool_round += 1
                 tool_names = [b["toolUse"]["name"] for b in orch_output["content"] if "toolUse" in b]
@@ -887,7 +1050,7 @@ def create_blueprint(config):
                         count = len(result.get("results", result.get("documents", [])))
                         yield _sse("tool_result", {"tool": name, "input": inp, "result": result})
                         yield _sse("status", {"message": f"{friendly} returned {count} result{'s' if count != 1 else ''}"})
-                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": result}]}})
+                        tool_results.append({"toolResult": {"toolUseId": tool["toolUseId"], "content": [{"json": _truncate_tool_result(result)}]}})
                         retrieved_context.append({"tool": name, "input": inp, "result": result})
                     except Exception as e:
                         logger.error("Tool %s failed: %s", name, e)
@@ -960,9 +1123,96 @@ def create_blueprint(config):
     return bp
 
 
+# ── S3-backed user store ──────────────────────────────────
+
+class UserStore:
+    """CRUD for user accounts stored as JSON in S3 under _users/ prefix."""
+
+    def __init__(self, s3_client, bucket):
+        self._s3 = s3_client
+        self._bucket = bucket
+
+    def _key(self, user_id):
+        return f"_users/{user_id}.json"
+
+    def get(self, user_id):
+        try:
+            body = self._s3.get_object(Bucket=self._bucket, Key=self._key(user_id))["Body"].read()
+            return json.loads(body)
+        except Exception:
+            return None
+
+    def get_by_email(self, email):
+        for u in self.list_all():
+            if u.get("email", "").lower() == email.lower():
+                return u
+        return None
+
+    def save(self, user):
+        self._s3.put_object(
+            Bucket=self._bucket, Key=self._key(user["id"]),
+            Body=json.dumps(user), ContentType="application/json",
+        )
+
+    def list_all(self):
+        users = []
+        for page in self._s3.get_paginator("list_objects_v2").paginate(Bucket=self._bucket, Prefix="_users/"):
+            for obj in page.get("Contents", []):
+                try:
+                    body = self._s3.get_object(Bucket=self._bucket, Key=obj["Key"])["Body"].read()
+                    users.append(json.loads(body))
+                except Exception:
+                    continue
+        return users
+
+
+class RoleStore:
+    """CRUD for roles stored as JSON in S3 under _roles/ prefix."""
+
+    def __init__(self, s3_client, bucket):
+        self._s3 = s3_client
+        self._bucket = bucket
+
+    def _key(self, name):
+        return f"_roles/{name}.json"
+
+    def get(self, name):
+        try:
+            body = self._s3.get_object(Bucket=self._bucket, Key=self._key(name))["Body"].read()
+            return json.loads(body)
+        except Exception:
+            return None
+
+    def save(self, role):
+        self._s3.put_object(
+            Bucket=self._bucket, Key=self._key(role["name"]),
+            Body=json.dumps(role), ContentType="application/json",
+        )
+
+    def delete(self, name):
+        try:
+            self._s3.delete_object(Bucket=self._bucket, Key=self._key(name))
+        except Exception:
+            pass
+
+    def list_all(self):
+        roles = []
+        for page in self._s3.get_paginator("list_objects_v2").paginate(Bucket=self._bucket, Prefix="_roles/"):
+            for obj in page.get("Contents", []):
+                try:
+                    body = self._s3.get_object(Bucket=self._bucket, Key=obj["Key"])["Body"].read()
+                    roles.append(json.loads(body))
+                except Exception:
+                    continue
+        return roles
+
+
 def create_standalone_app():
     """Build a standalone Flask app from .env config. Used by run.py."""
+    import uuid
     import boto3
+    from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+    from werkzeug.security import generate_password_hash, check_password_hash
     load_dotenv()
     logging.basicConfig(level=logging.INFO)
 
@@ -980,21 +1230,410 @@ def create_standalone_app():
     else:
         logger.info("AWS auth: default credential chain")
 
+    s3_client = session.client("s3")
+    app_prefix = os.getenv("APP_PREFIX", "")
+    audit_bucket = f"{app_prefix}retrieval-kit-audit-logs"
+    store = UserStore(s3_client, audit_bucket)
+    role_store = RoleStore(s3_client, audit_bucket)
+
+    # ── Flask-Login setup ──────────────────────────────
+
+    class User(UserMixin):
+        def __init__(self, data):
+            self._data = data
+
+        def get_id(self):
+            return self._data["id"]
+
+        @property
+        def is_active(self):
+            return self._data.get("is_active", True)
+
+        def to_dict(self):
+            return {k: v for k, v in self._data.items() if k != "password_hash"}
+
+    def _get_current_user_standalone():
+        if current_user.is_authenticated:
+            d = current_user._data
+            return {"id": d["id"], "email": d.get("email", ""), "display_name": d.get("display_name", ""), "role": d.get("role", "user")}
+        return {"id": "anonymous", "email": "", "display_name": "Anonymous", "role": "unknown"}
+
+    def _resolve_user_attrs_standalone():
+        if current_user.is_authenticated:
+            role_name = current_user._data.get("role", "")
+            role = role_store.get(role_name)
+            if role:
+                return role.get("attributes", [])
+        return []
+
     config = {
-        "s3_client": session.client("s3"),
+        "s3_client": s3_client,
         "bedrock_agent": session.client("bedrock-agent"),
         "bedrock_agent_runtime": session.client("bedrock-agent-runtime"),
         "bedrock_runtime": session.client("bedrock-runtime"),
-        "app_prefix": os.getenv("APP_PREFIX", ""),
+        "app_prefix": app_prefix,
         "knowledge_base_id": os.getenv("KNOWLEDGE_BASE_ID"),
         "data_source_id": os.getenv("DATA_SOURCE_ID"),
         "model_id": os.getenv("BEDROCK_MODEL_ID", "amazon.nova-pro-v1:0"),
         "api_base": "",
         "enable_sync_poller": True,
+        "get_current_user": _get_current_user_standalone,
+        "user_attributes_resolver": _resolve_user_attrs_standalone,
     }
 
     app = Flask(__name__)
+    _secret = os.getenv("SECRET_KEY")
+    if not _secret:
+        _secret_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".secret_key")
+        try:
+            with open(_secret_path) as f:
+                _secret = f.read().strip()
+        except FileNotFoundError:
+            _secret = os.urandom(32).hex()
+            with open(_secret_path, "w") as f:
+                f.write(_secret)
+    app.secret_key = _secret
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=7)
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        data = store.get(user_id)
+        return User(data) if data else None
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        return jsonify(error="Login required"), 401
+
+    # ── Seed admin on first request ────────────────────
+    _admin_seeded = [False]
+
+    @app.before_request
+    def _seed_admin():
+        if _admin_seeded[0]:
+            return
+        _admin_seeded[0] = True
+        # Seed default roles
+        all_attrs = [a["attribute_name"] for a in _load_attributes()]
+        if not role_store.get("admin"):
+            role_store.save({"name": "admin", "attributes": all_attrs + ["documentation:admin-users"], "created_at": datetime.now(timezone.utc).isoformat()})
+        if not role_store.get("user"):
+            role_store.save({"name": "user", "attributes": [
+                "documentation:view", "documentation:upload", "documentation:search", "documentation:chat",
+            ], "created_at": datetime.now(timezone.utc).isoformat()})
+        # Seed admin user
+        email = os.getenv("ADMIN_EMAIL")
+        pw = os.getenv("ADMIN_PASSWORD")
+        if not email or not pw:
+            return
+        if store.get_by_email(email):
+            return
+        admin = {
+            "id": "u_" + uuid.uuid4().hex[:12],
+            "email": email,
+            "display_name": "Admin",
+            "role": "admin",
+            "password_hash": generate_password_hash(pw),
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        store.save(admin)
+        logger.info("Seeded admin user: %s", email)
+
+    # ── Auth blueprint ─────────────────────────────────
+    auth_bp = Blueprint("rk_auth", __name__)
+
+    @auth_bp.route("/api/auth/login", methods=["POST"])
+    def login():
+        body = request.get_json(silent=True) or {}
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password", "")
+        if not email or not password:
+            return jsonify(error="Email and password required"), 400
+        user_data = store.get_by_email(email)
+        if not user_data or not check_password_hash(user_data.get("password_hash", ""), password):
+            return jsonify(error="Access denied — invalid email or password"), 401
+        if not user_data.get("is_active", True):
+            return jsonify(error="Access denied — your account is pending activation by a system administrator"), 403
+        login_user(User(user_data), remember=True)
+        user_data["last_login"] = datetime.now(timezone.utc).isoformat()
+        user_data["last_seen"] = user_data["last_login"]
+        store.save(user_data)
+        return jsonify(user={k: v for k, v in user_data.items() if k != "password_hash"}), 200
+
+    @auth_bp.route("/api/auth/logout", methods=["POST"])
+    def logout():
+        logout_user()
+        return jsonify(message="Logged out"), 200
+
+    @auth_bp.route("/api/auth/me", methods=["GET"])
+    def me():
+        if current_user.is_authenticated:
+            data = current_user.to_dict()
+            data["is_root"] = _is_root_admin(current_user._data)
+            return jsonify(user=data), 200
+        return jsonify(user=None), 200
+
+    @auth_bp.route("/api/auth/change-password", methods=["POST"])
+    def change_password():
+        if not current_user.is_authenticated:
+            return jsonify(error="Login required"), 401
+        if _is_root_admin(current_user._data):
+            return jsonify(error="Root admin password is managed via ADMIN_PASSWORD in .env"), 403
+        body = request.get_json(silent=True) or {}
+        current_pw = body.get("current_password", "")
+        new_pw = body.get("new_password", "")
+        if not current_pw or not new_pw:
+            return jsonify(error="Current and new password required"), 400
+        if len(new_pw) < 6:
+            return jsonify(error="New password must be at least 6 characters"), 400
+        user_data = store.get(current_user.get_id())
+        if not user_data or not check_password_hash(user_data.get("password_hash", ""), current_pw):
+            return jsonify(error="Current password is incorrect"), 401
+        user_data["password_hash"] = generate_password_hash(new_pw)
+        store.save(user_data)
+        return jsonify(message="Password changed"), 200
+
+    # ── Admin blueprint ────────────────────────────────
+    admin_bp = Blueprint("rk_admin", __name__)
+
+    def _user_has_attr(attr):
+        if not current_user.is_authenticated:
+            return False
+        role_name = current_user._data.get("role", "")
+        role = role_store.get(role_name)
+        if not role:
+            return False
+        return attr in role.get("attributes", [])
+
+    def _require_admin():
+        if not current_user.is_authenticated or not _user_has_attr("documentation:admin-users"):
+            return jsonify(error="Admin access required"), 403
+        return None
+
+    @admin_bp.route("/api/admin/users", methods=["GET"])
+    @login_required
+    def list_users():
+        err = _require_admin()
+        if err:
+            return err
+        users = []
+        for u in store.list_all():
+            entry = {k: v for k, v in u.items() if k != "password_hash"}
+            entry["is_root"] = _is_root_admin(u)
+            users.append(entry)
+        return jsonify(users=users), 200
+
+    @admin_bp.route("/api/admin/users", methods=["POST"])
+    @login_required
+    def create_user():
+        err = _require_admin()
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        email = (body.get("email") or "").strip().lower()
+        password = body.get("password", "")
+        if not email or not password:
+            return jsonify(error="Email and password required"), 400
+        if store.get_by_email(email):
+            return jsonify(error="Email already exists"), 409
+        user_data = {
+            "id": "u_" + uuid.uuid4().hex[:12],
+            "email": email,
+            "display_name": body.get("display_name", "").strip() or email.split("@")[0],
+            "role": body.get("role", "user"),
+            "password_hash": generate_password_hash(password),
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        store.save(user_data)
+        return jsonify(user={k: v for k, v in user_data.items() if k != "password_hash"}), 201
+
+    _root_admin_email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+
+    def _is_root_admin(user_data):
+        return user_data.get("email", "").lower() == _root_admin_email and _root_admin_email
+
+    @admin_bp.route("/api/admin/users/<user_id>", methods=["PATCH"])
+    @login_required
+    def update_user(user_id):
+        err = _require_admin()
+        if err:
+            return err
+        user_data = store.get(user_id)
+        if not user_data:
+            return jsonify(error="User not found"), 404
+        if _is_root_admin(user_data):
+            return jsonify(error="Root admin account cannot be modified"), 403
+        body = request.get_json(silent=True) or {}
+        if "role" in body:
+            user_data["role"] = body["role"]
+        if "is_active" in body:
+            user_data["is_active"] = bool(body["is_active"])
+        if "display_name" in body:
+            user_data["display_name"] = body["display_name"]
+        store.save(user_data)
+        return jsonify(user={k: v for k, v in user_data.items() if k != "password_hash"}), 200
+
+    @admin_bp.route("/api/admin/users/<user_id>/reset-password", methods=["POST"])
+    @login_required
+    def admin_reset_password(user_id):
+        err = _require_admin()
+        if err:
+            return err
+        user_data = store.get(user_id)
+        if not user_data:
+            return jsonify(error="User not found"), 404
+        if _is_root_admin(user_data):
+            return jsonify(error="Root admin password is managed via ADMIN_PASSWORD in .env"), 403
+        body = request.get_json(silent=True) or {}
+        new_pw = body.get("password", "")
+        if not new_pw or len(new_pw) < 6:
+            return jsonify(error="Password must be at least 6 characters"), 400
+        user_data["password_hash"] = generate_password_hash(new_pw)
+        store.save(user_data)
+        return jsonify(message=f"Password reset for {user_data['email']}"), 200
+
+    @admin_bp.route("/api/admin/users/<user_id>", methods=["DELETE"])
+    @login_required
+    def deactivate_user(user_id):
+        err = _require_admin()
+        if err:
+            return err
+        user_data = store.get(user_id)
+        if not user_data:
+            return jsonify(error="User not found"), 404
+        if _is_root_admin(user_data):
+            return jsonify(error="Root admin account cannot be deactivated"), 403
+        user_data["is_active"] = False
+        store.save(user_data)
+        return jsonify(message=f"Deactivated {user_data['email']}"), 200
+
+    @admin_bp.route("/api/admin/users/<user_id>/delete", methods=["DELETE"])
+    @login_required
+    def delete_user_permanent(user_id):
+        err = _require_admin()
+        if err:
+            return err
+        if current_user.get_id() == user_id:
+            return jsonify(error="Cannot delete your own account"), 400
+        user_data = store.get(user_id)
+        if not user_data:
+            return jsonify(error="User not found"), 404
+        if _is_root_admin(user_data):
+            return jsonify(error="Root admin account cannot be deleted"), 403
+        if user_data.get("is_active", True):
+            return jsonify(error="Deactivate the account before deleting"), 400
+        try:
+            s3_client.delete_object(Bucket=audit_bucket, Key=f"_users/{user_id}.json")
+        except Exception as e:
+            return jsonify(error=str(e)), 500
+        return jsonify(message=f"Deleted {user_data['email']}"), 200
+
+    @admin_bp.route("/api/admin/roles", methods=["GET"])
+    @login_required
+    def list_roles():
+        err = _require_admin()
+        if err:
+            return err
+        all_attrs = [a["attribute_name"] for a in _load_attributes()] + ["documentation:admin-users"]
+        return jsonify(roles=role_store.list_all(), available_attributes=all_attrs), 200
+
+    @admin_bp.route("/api/admin/roles", methods=["POST"])
+    @login_required
+    def create_role():
+        err = _require_admin()
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        name = re.sub(r'[^a-z0-9_-]', '', (body.get("name") or "").strip().lower())
+        if not name:
+            return jsonify(error="Role name required"), 400
+        if role_store.get(name):
+            return jsonify(error="Role already exists"), 409
+        role = {
+            "name": name,
+            "attributes": body.get("attributes", []),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        role_store.save(role)
+        return jsonify(role=role), 201
+
+    @admin_bp.route("/api/admin/roles/<name>", methods=["PATCH"])
+    @login_required
+    def update_role(name):
+        err = _require_admin()
+        if err:
+            return err
+        role = role_store.get(name)
+        if not role:
+            return jsonify(error="Role not found"), 404
+        body = request.get_json(silent=True) or {}
+        if "attributes" in body:
+            role["attributes"] = body["attributes"]
+        role_store.save(role)
+        return jsonify(role=role), 200
+
+    @admin_bp.route("/api/admin/roles/<name>", methods=["DELETE"])
+    @login_required
+    def delete_role(name):
+        err = _require_admin()
+        if err:
+            return err
+        if name in ("admin", "user"):
+            return jsonify(error="Cannot delete built-in roles"), 400
+        if not role_store.get(name):
+            return jsonify(error="Role not found"), 404
+        users_with_role = [u for u in store.list_all() if u.get("role") == name]
+        if users_with_role:
+            return jsonify(error=f"Role assigned to {len(users_with_role)} user(s)"), 400
+        role_store.delete(name)
+        return jsonify(message=f"Deleted role: {name}"), 200
+
+    # ── Standalone login_required on retrieval-kit routes ──
+    AUTH_EXEMPT = {"/api/auth/login", "/api/auth/logout", "/api/auth/me", "/login"}
+
+    @auth_bp.route("/login")
+    def login_page():
+        if current_user.is_authenticated:
+            return redirect("/")
+        _pkg_dir = os.path.dirname(os.path.abspath(__file__))
+        return render_template("login-page.html", api_base="", register_email=os.getenv("REGISTER_EMAIL", ""))
+
+    @app.before_request
+    def _standalone_auth():
+        if request.endpoint and request.endpoint.startswith("rk_auth."):
+            return
+        if request.path in AUTH_EXEMPT:
+            return
+        if request.endpoint == "static" or (request.endpoint and ".static" in request.endpoint):
+            return
+        if not current_user.is_authenticated:
+            if request.path == "/" or not request.path.startswith("/api/"):
+                return redirect("/login")
+            return jsonify(error="Login required"), 401
+        # Update last_seen (throttled to once per 60s to avoid excessive S3 writes)
+        _last_seen_cache = getattr(app, '_last_seen_cache', {})
+        uid = current_user.get_id()
+        now = datetime.now(timezone.utc)
+        prev = _last_seen_cache.get(uid)
+        if not prev or (now - prev).total_seconds() > 60:
+            _last_seen_cache[uid] = now
+            app._last_seen_cache = _last_seen_cache
+            try:
+                ud = store.get(uid)
+                if ud:
+                    ud["last_seen"] = now.isoformat()
+                    store.save(ud)
+            except Exception:
+                pass
+
+    # ── Register blueprints ────────────────────────────
     bp = create_blueprint(config)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
     app.register_blueprint(bp)
     return app

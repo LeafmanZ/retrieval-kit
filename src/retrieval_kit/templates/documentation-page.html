@@ -21,11 +21,11 @@
     --critical-glow: #FF073A;
     --rx-color: #00ffff;
     --rx-color-rgb: 0, 255, 255;
-    --tx-color: #ff00ff;
-    --tx-color-rgb: 255, 0, 255;
+    --tx-color: #F72AFF;
+    --tx-color-rgb: 247, 42, 255;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Roboto Condensed',sans-serif; background:#0a0e17; color:var(--text-color); height:100vh; display:flex; flex-direction:column; }
+  body { font-family:'Roboto Condensed',sans-serif; background:{% if not api_base %}#0a0e17{% else %}transparent{% endif %}; color:var(--text-color); height:100vh; display:flex; flex-direction:column; }
   body::before {
     content:''; position:fixed; top:0; left:0; width:100vw; height:100vh;
     background-image:
@@ -35,7 +35,7 @@
     animation:moveGrid 90s linear infinite;
     z-index:-1; pointer-events:none;
   }
-  @keyframes moveGrid { from{background-position:0 0} to{background-position:50px 50px} }
+  @keyframes moveGrid { from{background-position:0 0} to{background-position:500px 500px} }
 
   .tab-btn {
     font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
@@ -48,8 +48,8 @@
 
   /* Left Panel */
   .left-panel {
-    width:380px; border-right:1px solid var(--border-color); display:flex; flex-direction:column;
-    background:var(--glass-bg); backdrop-filter:blur(10px);
+    width:380px; display:flex; flex-direction:column;
+    background:transparent; overflow:hidden;
   }
 
   #file-input { display:none; }
@@ -106,7 +106,7 @@
     font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
     padding:3px 8px; border-radius:6px; cursor:pointer; font-family:inherit;
   }
-  .upload-btn:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .upload-btn:hover { border-color:var(--tx-color); color:var(--tx-color); box-shadow:0 0 8px rgba(var(--tx-color-rgb),0.3); }
   .upload-exts-panel {
     max-height:0; overflow:hidden; transition:max-height .25s ease, padding .25s ease;
     padding:0 16px; background:rgba(var(--primary-neon-rgb),0.03);
@@ -174,7 +174,7 @@
   .docs-pagination {
     display:flex; justify-content:space-between; align-items:center;
     padding:6px 16px; font-size:11px; color:#555; flex-shrink:0;
-    border-top:1px solid var(--border-color); background:var(--glass-bg);
+    border-top:1px solid var(--border-color); background:transparent;
   }
   .docs-pag-controls { display:flex; align-items:center; gap:8px; color:#888; }
   .doc-count-bar { display:flex; align-items:center; gap:8px; }
@@ -204,6 +204,9 @@
   }
   .doc-item:hover .doc-name { white-space:normal; word-break:break-all; }
   .doc-meta { font-size:10px; color:#666; margin-top:1px; display:flex; gap:6px; align-items:center; }
+  .doc-uploader { font-size:10px; color:#555; margin-top:2px; display:none; }
+  .doc-uploader i { font-size:9px; margin-right:3px; }
+  .doc-item:hover .doc-uploader { display:block; }
   .doc-type-badge {
     font-size:9px; padding:1px 5px; border-radius:3px; text-transform:uppercase; font-weight:600;
     background:rgba(var(--primary-neon-rgb),0.05); border:1px solid var(--border-color); color:#888;
@@ -232,7 +235,7 @@
     background:none; border:none; color:#555; cursor:pointer; font-size:14px;
     padding:2px 4px; border-radius:4px; flex-shrink:0;
   }
-  .doc-delete:hover { color:var(--critical-glow); background:rgba(255,7,58,0.1); }
+  .doc-delete:hover { color:var(--tx-color); background:rgba(var(--tx-color-rgb),0.1); }
   .docs-empty { color:#555; font-size:12px; text-align:center; padding:20px; }
   .docs-loading { color:#666; font-size:12px; text-align:center; padding:30px 20px; display:flex; flex-direction:column; align-items:center; gap:10px; }
   .docs-loading .docs-spinner {
@@ -241,9 +244,9 @@
   }
 
   /* Search Panel */
-  .search-panel { flex:1; display:flex; flex-direction:column; background:var(--bg-color); }
+  .search-panel { flex:1; display:flex; flex-direction:column; background:var(--bg-color); min-height:0; }
 
-  .search-bar { padding:20px; border-bottom:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:10px; flex-wrap:wrap; }
+  .search-bar { padding:20px; background:transparent; display:flex; gap:10px; }
   .search-bar input {
     flex:1; min-width:200px; background:transparent; border:1px solid var(--border-color); border-radius:8px;
     padding:12px 16px; color:var(--text-color); font-size:15px; outline:none; font-family:inherit;
@@ -304,7 +307,8 @@
   .ss-reset.dirty:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
 
   .results { flex:1; overflow-y:auto; padding:20px; }
-  .results-empty { color:#444; font-size:15px; text-align:center; margin-top:80px; }
+  .results-empty { color:#fff; font-size:15px; text-align:center; margin-top:80px; }
+  .results-empty::before { content:'\f002'; font-family:'Font Awesome 6 Free'; font-weight:900; display:block; font-size:28px; color:#fff; margin-bottom:12px; }
 
   .result-card {
     background:var(--glass-bg); backdrop-filter:blur(10px); border:1px solid var(--border-color); border-radius:12px;
@@ -313,12 +317,13 @@
   .result-card:hover:not(.highlight) { background:rgba(var(--primary-neon-rgb),0.03); }
   .result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .result-filename { font-size:13px; font-weight:600; color:var(--primary-neon); word-break:break-all; }
+  .result-filename:hover { color:var(--tx-color); }
   .result-score {
     font-size:11px; padding:3px 8px; border-radius:6px; font-weight:600;
     white-space:nowrap; margin-left:12px;
   }
   .score-high { background:rgba(40,167,69,0.15); color:var(--operational-glow); }
-  .score-mid { background:rgba(255,193,7,0.15); color:var(--degraded-glow); }
+  .score-mid { background:rgba(var(--tx-color-rgb),0.15); color:var(--tx-color); }
   .score-low { background:rgba(255,7,58,0.15); color:var(--critical-glow); }
 
   .result-method {
@@ -396,7 +401,7 @@
   @keyframes spin { to{transform:rotate(360deg)} }
 
   /* Chat Panel */
-  .chat-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); }
+  .chat-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
   .chat-panel.active { display:flex; }
   .search-panel.active { display:flex; }
   .search-panel { display:none; }
@@ -411,7 +416,8 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   .chat-messages { flex:1; overflow-y:auto; padding:20px; }
-  .chat-empty { color:#444; font-size:15px; text-align:center; margin-top:80px; }
+  .chat-empty { color:#fff; font-size:15px; text-align:center; margin-top:80px; }
+  .chat-empty::before { content:'\f075'; font-family:'Font Awesome 6 Free'; font-weight:900; display:block; font-size:28px; color:var(--tx-color); margin-bottom:12px; opacity:0.6; }
 
   .chat-msg { margin-bottom:16px; display:flex; gap:10px; }
   .chat-msg.user { justify-content:flex-end; }
@@ -462,7 +468,7 @@
     border-color:var(--operational-glow); box-shadow:0 0 12px rgba(40,167,69,0.3);
   }
 
-  .chat-input-bar { padding:16px 20px; border-top:1px solid var(--border-color); background:var(--glass-bg); backdrop-filter:blur(10px); display:flex; gap:10px; }
+  .chat-input-bar { padding:16px 20px; background:transparent; display:flex; gap:10px; }
   .chat-input-bar input {
     flex:1; background:transparent; border:1px solid var(--border-color); border-radius:8px;
     padding:12px 16px; color:var(--text-color); font-size:15px; outline:none; font-family:inherit;
@@ -475,10 +481,235 @@
     padding:12px 24px; font-size:14px; cursor:pointer; font-weight:500; font-family:inherit;
     transition:all .2s;
   }
-  .chat-input-bar button:hover { background:var(--primary-neon); color:#0a0e17; }
+  .chat-input-bar button:hover { background:var(--tx-color); color:#fff; border-color:var(--tx-color); box-shadow:0 0 12px rgba(var(--tx-color-rgb),0.4); }
   .chat-input-bar button:disabled { background:transparent; border-color:var(--border-color); color:#555; cursor:not-allowed; }
   .chat-thinking { color:#666; font-size:13px; padding:8px 16px; }
   .chat-thinking .dots::after { content:''; animation:dots 1.5s infinite; }
+
+  /* User Menu Panel */
+  .user-menu-wrap { margin-left:auto; }
+  .user-menu-btn {
+    font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
+    padding:4px 8px; border-radius:6px; cursor:pointer; font-family:inherit; transition:all .2s;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  .user-menu-btn:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .user-menu-btn i { font-size:10px; }
+  .user-menu-panel {
+    max-height:0; overflow:hidden; transition:max-height .25s ease, padding .25s ease;
+    padding:0 16px; background:rgba(var(--primary-neon-rgb),0.03);
+    border-bottom:1px solid transparent;
+  }
+  .user-menu-panel.open {
+    max-height:200px; padding:8px 16px 10px;
+    border-bottom-color:var(--border-color);
+  }
+  .user-menu-panel .user-menu-items { display:flex; gap:6px; flex-wrap:wrap; }
+  .user-menu-panel .user-menu-items button {
+    font-size:11px; background:none; border:1px solid var(--border-color); color:#aaa;
+    padding:6px 10px; border-radius:6px; cursor:pointer; font-family:inherit; transition:all .2s;
+    display:flex; flex-direction:column; align-items:center; gap:3px; min-width:60px;
+  }
+  .user-menu-panel .user-menu-items button i { font-size:14px; }
+  .user-menu-panel .user-menu-items button:hover:not(:disabled) { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .user-menu-panel .user-menu-items button:disabled { opacity:.25; cursor:not-allowed; }
+  .user-menu-panel .user-menu-items button.active { background:rgba(var(--primary-neon-rgb),0.15); border-color:var(--primary-neon); color:var(--primary-neon); box-shadow:0 0 8px rgba(var(--primary-neon-rgb),0.3); }
+  .user-menu-panel .user-menu-items button.logout-item { }
+  .user-menu-panel .user-menu-items button.logout-item:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
+  .pw-change-form {
+    display:none; padding:8px 16px 4px; background:rgba(var(--primary-neon-rgb),0.03);
+  }
+  .pw-change-form.open { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .pw-change-form input {
+    background:transparent; border:1px solid var(--border-color); border-radius:5px;
+    padding:5px 8px; color:var(--text-color); font-size:11px; font-family:inherit;
+    outline:none; flex:1; min-width:100px; transition:border-color .2s;
+  }
+  .pw-change-form input:focus { border-color:var(--primary-neon); }
+  .pw-change-form input::placeholder { color:#555; }
+  .pw-change-form button {
+    background:none; border:1px solid var(--border-color); color:#888; padding:4px 10px;
+    border-radius:5px; cursor:pointer; font-size:11px; font-family:inherit; transition:all .2s;
+  }
+  .pw-change-form button.save:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .pw-change-form button.cancel:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
+  .pw-change-form .pw-msg { font-size:10px; width:100%; }
+  .pw-change-form .pw-msg.error { color:var(--critical-glow); }
+  .pw-change-form .pw-msg.success { color:var(--operational-glow); }
+
+  /* Roles Panel */
+  .roles-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
+  .roles-panel.active { display:flex; }
+  .roles-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; }
+  .roles-header button {
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
+  }
+  .roles-header button:hover { background:var(--primary-neon); color:#0a0e17; }
+  .roles-list { flex:1; overflow-y:auto; padding:16px 20px; }
+  .roles-empty { color:#444; font-size:14px; text-align:center; margin-top:60px; }
+  .role-card {
+    background:var(--glass-bg); border:1px solid var(--border-color); border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; font-size:12px; transition:border-color .2s;
+  }
+  .role-card:hover { border-color:var(--primary-neon); }
+  .role-card-header { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .role-card-name { font-weight:600; color:var(--primary-neon); font-size:13px; }
+  .role-card-builtin { font-size:9px; color:#555; border:1px solid var(--border-color); padding:1px 5px; border-radius:3px; }
+  .role-card-actions { margin-left:auto; display:flex; gap:4px; }
+  .role-card-actions button {
+    background:none; border:1px solid var(--border-color); color:#888; padding:3px 8px;
+    border-radius:4px; cursor:pointer; font-size:10px; font-family:inherit; transition:all .2s;
+  }
+  .role-card-actions button:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .role-card-actions button.danger:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
+  .role-attrs { display:flex; flex-wrap:wrap; gap:4px; }
+  .role-card-actions button.save-role { }
+  .role-card-actions button.save-role:hover { border-color:var(--operational-glow); color:var(--operational-glow); }
+  .role-card-actions button.save-role.dirty { border-color:var(--degraded-glow); color:var(--degraded-glow); animation:pulse 1.5s infinite; }
+  .role-attr-tag {
+    font-size:10px; padding:2px 7px; border-radius:4px; cursor:pointer;
+    border:1px solid var(--border-color); background:rgba(var(--primary-neon-rgb),0.05); color:#888;
+    font-family:inherit; transition:all .15s;
+  }
+  .role-attr-tag.active { background:rgba(var(--primary-neon-rgb),0.15); border-color:var(--primary-neon); color:var(--primary-neon); }
+  .role-attr-tag:hover { border-color:var(--primary-neon); }
+  .role-create-card {
+    background:var(--glass-bg); border:1px dashed var(--primary-neon); border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; display:none; align-items:center; gap:8px; font-size:12px;
+  }
+  .role-create-card.open { display:flex; }
+  .role-create-card input {
+    background:transparent; border:1px solid var(--border-color); border-radius:5px;
+    padding:5px 8px; color:var(--text-color); font-size:12px; font-family:inherit;
+    outline:none; flex:1; transition:border-color .2s;
+  }
+  .role-create-card input:focus { border-color:var(--primary-neon); }
+  .role-create-card input::placeholder { color:#555; }
+  .role-create-card button {
+    background:none; border:1px solid var(--border-color); color:#888; padding:4px 10px;
+    border-radius:5px; cursor:pointer; font-size:11px; font-family:inherit; transition:all .2s;
+  }
+  .role-create-card button.save:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .role-create-card button.cancel:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
+
+  /* Audit Panel */
+  .audit-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
+  .audit-panel.active { display:flex; }
+  .audit-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .audit-header select, .audit-header input {
+    background:#0d1117; border:1px solid var(--border-color); border-radius:8px;
+    padding:12px 16px; color:var(--text-color); font-size:15px; font-family:inherit; outline:none;
+  }
+  .audit-header select:focus, .audit-header input:focus { border-color:var(--primary-neon); }
+  .audit-header select option { background:#0d1117; }
+  .audit-header button {
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
+  }
+  .audit-header button:hover { background:var(--primary-neon); color:#0a0e17; }
+  .audit-list { flex:1; overflow-y:auto; padding:16px 20px; }
+  .audit-empty { color:#444; font-size:14px; text-align:center; margin-top:60px; }
+  .audit-spinner { text-align:center; padding:40px; color:var(--primary-neon); font-size:14px; }
+  .audit-spinner .audit-spin-icon {
+    width:22px; height:22px; border:2px solid rgba(var(--primary-neon-rgb),0.15);
+    border-top-color:var(--primary-neon); border-radius:50%; animation:spin .7s linear infinite;
+    display:inline-block; margin-bottom:10px;
+  }
+  .audit-entry {
+    background:var(--glass-bg); border:1px solid var(--border-color); border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; font-size:12px; transition:border-color .2s;
+  }
+  .audit-entry:hover { border-color:var(--primary-neon); }
+  .audit-entry-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .audit-action {
+    font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; text-transform:uppercase;
+  }
+  .audit-action.upload { background:rgba(40,167,69,0.15); color:var(--operational-glow); }
+  .audit-action.delete, .audit-action.delete_orphan { background:rgba(255,7,58,0.15); color:var(--critical-glow); }
+  .audit-action.retry_convert { background:rgba(255,193,7,0.15); color:var(--degraded-glow); }
+  .audit-time { font-size:10px; color:#555; }
+  .audit-target { color:var(--primary-neon); font-weight:500; word-break:break-all; }
+  .audit-user { color:#888; font-size:11px; margin-top:2px; }
+  .audit-user i { font-size:9px; margin-right:3px; }
+  .audit-pagination {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px 20px; font-size:11px; color:#555; flex-shrink:0;
+    border-top:1px solid var(--border-color);
+  }
+  .audit-pag-controls { display:flex; align-items:center; gap:8px; }
+  .audit-pagination button {
+    background:none; border:1px solid var(--border-color); color:#aaa;
+    padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit;
+  }
+  .audit-pagination button:hover:not(:disabled) { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .audit-pagination button:disabled { opacity:.3; cursor:not-allowed; }
+
+
+  /* User Admin Panel */
+  .admin-panel { flex:1; display:none; flex-direction:column; background:var(--bg-color); min-height:0; }
+  .admin-panel.active { display:flex; }
+  .admin-header { padding:20px; background:transparent; display:flex; gap:10px; align-items:center; }
+  .admin-header button {
+    background:transparent; color:var(--primary-neon); border:1px solid var(--primary-neon); border-radius:8px;
+    padding:12px 24px; font-size:14px; cursor:pointer; font-family:inherit; font-weight:500; transition:all .2s;
+  }
+  .admin-header button:hover { background:var(--primary-neon); color:#0a0e17; }
+  .admin-list { flex:1; overflow-y:auto; padding:16px 20px; }
+  .admin-empty { color:#444; font-size:14px; text-align:center; margin-top:60px; }
+  .admin-user-card {
+    background:var(--glass-bg); border:1px solid var(--border-color); border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; display:flex; align-items:center; gap:10px; font-size:12px;
+    transition:border-color .2s;
+  }
+  .admin-user-card:hover { border-color:var(--primary-neon); }
+  .admin-user-info { flex:1; min-width:0; }
+  .admin-user-name { font-weight:600; color:var(--text-color); }
+  .admin-user-email { color:#888; font-size:11px; }
+  .admin-role-badge {
+    font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; text-transform:uppercase;
+  }
+  .admin-role-badge.admin { background:rgba(var(--primary-neon-rgb),0.15); color:var(--primary-neon); }
+  .admin-role-badge.user { background:rgba(255,255,255,0.05); color:#888; }
+  .admin-status-badge {
+    font-size:10px; padding:2px 6px; border-radius:4px; font-weight:600;
+  }
+  .admin-status-badge.active { background:rgba(40,167,69,0.15); color:var(--operational-glow); }
+  .admin-status-badge.inactive { background:rgba(255,7,58,0.15); color:var(--critical-glow); }
+  .admin-user-actions { display:flex; gap:4px; }
+  .admin-user-actions button {
+    background:none; border:1px solid var(--border-color); color:#888; padding:3px 8px;
+    border-radius:4px; cursor:pointer; font-size:10px; font-family:inherit; transition:all .2s;
+  }
+  .admin-user-actions button:hover:not(:disabled) { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .admin-user-actions button.danger:hover:not(:disabled) { border-color:var(--critical-glow); color:var(--critical-glow); }
+  .admin-user-actions button:disabled { opacity:.25; cursor:not-allowed; }
+  .admin-create-card {
+    background:var(--glass-bg); border:1px dashed var(--primary-neon); border-radius:8px;
+    padding:10px 14px; margin-bottom:6px; display:none; align-items:center; gap:8px; font-size:12px;
+  }
+  .admin-create-card.open { display:flex; }
+  .admin-create-card input {
+    background:transparent; border:1px solid var(--border-color); border-radius:5px;
+    padding:5px 8px; color:var(--text-color); font-size:12px; font-family:inherit;
+    outline:none; min-width:0; flex:1; transition:border-color .2s;
+  }
+  .admin-create-card input:focus { border-color:var(--primary-neon); }
+  .admin-create-card input::placeholder { color:#555; }
+  .admin-create-card select {
+    background:#0d1117; border:1px solid var(--border-color); border-radius:5px;
+    padding:5px 6px; color:var(--text-color); font-size:11px; font-family:inherit;
+    outline:none; cursor:pointer;
+  }
+  .admin-create-card select option { background:#0d1117; }
+  .admin-create-card .admin-create-actions { display:flex; gap:4px; flex-shrink:0; }
+  .admin-create-card .admin-create-actions button {
+    background:none; border:1px solid var(--border-color); color:#888; padding:4px 10px;
+    border-radius:5px; cursor:pointer; font-size:11px; font-family:inherit; transition:all .2s;
+  }
+  .admin-create-card .admin-create-actions button.save:hover { border-color:var(--primary-neon); color:var(--primary-neon); }
+  .admin-create-card .admin-create-actions button.cancel:hover { border-color:var(--critical-glow); color:var(--critical-glow); }
+  .admin-create-error { color:var(--critical-glow); font-size:11px; }
 
 
   .docs-header .sync-status {
@@ -587,6 +818,10 @@
         </button>
         <button onclick="loadDocuments()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
         <button class="tab-btn" data-tab="chat" onclick="toggleChat()"><i class="fa-solid fa-comments"></i> Chat</button>
+        <button class="tab-btn" data-tab="audit" id="audit-tab-btn" onclick="toggleAudit()"><i class="fa-solid fa-clock-rotate-left"></i> Audit</button>
+        <div class="user-menu-wrap" id="user-menu-wrap" style="display:none">
+          <button class="user-menu-btn" id="user-menu-btn"><i class="fa-solid fa-user"></i> <span id="user-menu-label"></span></button>
+        </div>
       </div>
       <div class="info-panel" id="info-panel">
         <h4><i class="fa-solid fa-circle-info"></i> Quick Start</h4>
@@ -605,6 +840,22 @@
         <div class="sync-details-grid" id="sync-details-grid"></div>
         <div id="sync-warnings-container"></div>
         <div id="sync-orphans-container"></div>
+      </div>
+      <div class="user-menu-panel" id="user-menu-panel">
+        <div class="user-menu-items">
+          <button id="audit-menu-btn" onclick="toggleAudit()"><i class="fa-solid fa-clock-rotate-left"></i> Audit Log</button>
+          <button id="admin-menu-btn" onclick="toggleAdmin()"><i class="fa-solid fa-users-gear"></i> Users</button>
+          <button id="roles-menu-btn" onclick="toggleRoles()"><i class="fa-solid fa-shield-halved"></i> Roles</button>
+          <button id="pw-change-btn" onclick="togglePwChange()"><i class="fa-solid fa-key"></i> Password</button>
+          <button class="logout-item" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+        </div>
+        <div class="pw-change-form" id="pw-change-form">
+          <input type="password" id="pw-current" placeholder="Current password">
+          <input type="password" id="pw-new" placeholder="New password">
+          <button class="save" onclick="submitPwChange()"><i class="fa-solid fa-check"></i></button>
+          <button class="cancel" onclick="togglePwChange()"><i class="fa-solid fa-xmark"></i></button>
+          <div class="pw-msg" id="pw-msg"></div>
+        </div>
       </div>
       <div class="docs-search"><input type="text" id="doc-search" placeholder="Filter documents..." autocomplete="off"></div>
       <div class="docs-filters">
@@ -656,7 +907,7 @@
   <div class="search-panel active" id="search-panel">
     <div class="search-bar">
       <input type="text" id="query-input" placeholder="Search your documents..." autocomplete="off">
-      <button id="search-btn" onclick="doSearch()">Search</button>
+      <button id="search-btn" onclick="doSearch()"><i class="fa-solid fa-arrow-up" id="search-btn-icon"></i></button>
       <button class="search-settings-btn" id="settings-btn" title="Search settings"><i class="fa-solid fa-cog"></i></button>
     </div>
     <div class="search-settings-panel" id="search-settings-panel">
@@ -675,6 +926,72 @@
     </div>
     <div class="results" id="results">
       <div class="results-empty">Search across all your uploaded documents</div>
+    </div>
+  </div>
+
+  <div class="roles-panel" id="roles-panel">
+    <div class="roles-header">
+      <button onclick="loadRoles()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+      <button onclick="showCreateRole()"><i class="fa-solid fa-plus"></i> Create Role</button>
+    </div>
+    <div class="roles-list" id="roles-list">
+      <div class="role-create-card" id="role-create-card">
+        <input type="text" id="new-role-name" placeholder="Role name (lowercase)">
+        <button class="save" onclick="submitCreateRole()"><i class="fa-solid fa-check"></i></button>
+        <button class="cancel" onclick="hideCreateRole()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="roles-empty">Loading…</div>
+    </div>
+  </div>
+
+  <div class="admin-panel" id="admin-panel">
+    <div class="admin-header">
+      <button onclick="loadAdminUsers()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+      <button onclick="showCreateUser()"><i class="fa-solid fa-user-plus"></i> Create User</button>
+    </div>
+    <div class="admin-list">
+      <div class="admin-create-card" id="admin-create-card">
+        <input type="text" id="new-user-email" placeholder="Email">
+        <input type="text" id="new-user-name" placeholder="Name">
+        <input type="password" id="new-user-pass" placeholder="Password">
+        <select id="new-user-role" class="dynamic-role-select"><option value="user">user</option></select>
+        <div class="admin-create-actions">
+          <button class="save" onclick="submitCreateUser()"><i class="fa-solid fa-check"></i></button>
+          <button class="cancel" onclick="hideCreateUser()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div id="admin-user-list">
+        <div class="admin-empty"><i class="fa-solid fa-users-gear"></i> Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="audit-panel" id="audit-panel">
+    <div class="audit-header">
+      <select id="audit-action-filter" onchange="auditReset()">
+        <option value="">All actions</option>
+        <option value="upload">Upload</option>
+        <option value="delete">Delete</option>
+        <option value="delete_orphan">Delete orphan</option>
+        <option value="retry_convert">Retry convert</option>
+      </select>
+      <select id="audit-days-filter" onchange="auditReset()">
+        <option value="1" selected>Last 24h</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
+      <input type="text" id="audit-doc-filter" placeholder="Filter by document..." style="flex:1;min-width:120px">
+    </div>
+    <div class="audit-list" id="audit-list">
+      <div class="audit-spinner"><div class="audit-spin-icon"></div><br>Loading audit logs…</div>
+    </div>
+    <div class="audit-pagination" id="audit-pagination" style="display:none">
+      <span id="audit-count"></span>
+      <div class="audit-pag-controls">
+        <button id="audit-load-more" onclick="loadAuditMore()"><i class="fa-solid fa-angles-down"></i> Load more</button>
+      </div>
     </div>
   </div>
 
@@ -701,12 +1018,15 @@ const RK_PERMS = {
   manageOrphans:  {{ 'true' if user_attrs is none or 'documentation:manage-orphans' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
   viewStats:      {{ 'true' if user_attrs is none or 'documentation:view-stats' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
   viewIngestion:  {{ 'true' if user_attrs is none or 'documentation:view-ingestion' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  viewAudit:      {{ 'true' if user_attrs is none or 'documentation:view-audit' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
+  adminUsers:     {{ 'true' if user_attrs is none or 'documentation:admin-users' in user_attrs or 'system:super-admin' in user_attrs else 'false' }},
 };
 const fileInput = document.getElementById('file-input');
 const docsSection = document.getElementById('docs-section');
 const results = document.getElementById('results');
 const queryInput = document.getElementById('query-input');
 const searchBtn = document.getElementById('search-btn');
+searchBtn.style.opacity = '0.3';
 const docsList = document.getElementById('docs-list');
 const docCount = document.getElementById('doc-count');
 const docSearch = document.getElementById('doc-search');
@@ -800,6 +1120,439 @@ function toggleChat() {
   document.getElementById('chat-panel').classList.toggle('active', chatOpen);
 }
 
+let auditOpen = false;
+function toggleAudit() {
+  auditOpen = !auditOpen;
+  document.getElementById('audit-panel').classList.toggle('active', auditOpen);
+  document.getElementById('audit-tab-btn').classList.toggle('active', auditOpen);
+  const menuBtn = document.getElementById('audit-menu-btn');
+  if (menuBtn) menuBtn.classList.toggle('active', auditOpen);
+  if (auditOpen) loadAuditLogs();
+}
+
+let _auditCursor = null;
+let _auditTotal = 0;
+
+function auditReset() {
+  _auditCursor = null;
+  _auditTotal = 0;
+  loadAuditLogs(false);
+}
+
+function _auditParams() {
+  const params = new URLSearchParams();
+  const action = document.getElementById('audit-action-filter').value;
+  const target = document.getElementById('audit-doc-filter').value.trim();
+  const days = document.getElementById('audit-days-filter').value;
+  if (action) params.set('action', action);
+  if (target) params.set('target_key', target);
+  params.set('days', days);
+  params.set('limit', '50');
+  return params;
+}
+
+function _renderAuditEntry(log) {
+  const user = log.user || {};
+  const name = user.display_name || user.email || user.id || 'unknown';
+  const time = new Date(log.timestamp).toLocaleString();
+  return `<div class="audit-entry">
+    <div class="audit-entry-header">
+      <span class="audit-action ${log.action}">${log.action.replace('_', ' ')}</span>
+      <span class="audit-time">${time}</span>
+    </div>
+    <div class="audit-target">${escapeHtml(log.target_key)}</div>
+    <div class="audit-user"><i class="fa-solid fa-user"></i>${escapeHtml(name)}${log.ip_address ? ' \u00b7 ' + log.ip_address : ''}${user.role && user.role !== 'unknown' ? ' \u00b7 ' + user.role : ''}</div>
+  </div>`;
+}
+
+function _updateAuditPagination() {
+  const pag = document.getElementById('audit-pagination');
+  const btn = document.getElementById('audit-load-more');
+  document.getElementById('audit-count').textContent = _auditTotal + ' log' + (_auditTotal === 1 ? '' : 's');
+  pag.style.display = _auditTotal > 0 ? '' : 'none';
+  btn.disabled = !_auditCursor;
+  btn.innerHTML = _auditCursor ? '<i class="fa-solid fa-angles-down"></i> Load more' : 'All loaded';
+}
+
+async function loadAuditLogs(append) {
+  const list = document.getElementById('audit-list');
+  if (!append) {
+    list.innerHTML = '<div class="audit-spinner"><div class="audit-spin-icon"></div><br>Loading audit logs\u2026</div>';
+    _auditCursor = null;
+    _auditTotal = 0;
+  }
+  const params = _auditParams();
+  if (_auditCursor) params.set('cursor', _auditCursor);
+  try {
+    const resp = await fetch(RK_API + '/api/audit?' + params.toString());
+    if (resp.status === 401) {
+      if (!append) list.innerHTML = '<div class="audit-empty">Session expired — please reload the page</div>';
+      _updateAuditPagination();
+      return;
+    }
+    const data = await resp.json();
+    _auditCursor = data.next_cursor || null;
+    if (!append) {
+      if (!data.logs || data.logs.length === 0) {
+        list.innerHTML = '<div class="audit-empty">No audit logs found</div>';
+        _auditTotal = 0;
+      } else {
+        list.innerHTML = data.logs.map(_renderAuditEntry).join('');
+        _auditTotal = data.logs.length;
+      }
+    } else {
+      if (data.logs && data.logs.length > 0) {
+        list.insertAdjacentHTML('beforeend', data.logs.map(_renderAuditEntry).join(''));
+        _auditTotal += data.logs.length;
+      }
+    }
+  } catch {
+    if (!append) list.innerHTML = '<div class="audit-empty">Failed to load audit logs</div>';
+  }
+  _updateAuditPagination();
+}
+
+async function loadAuditMore() {
+  const btn = document.getElementById('audit-load-more');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+  await loadAuditLogs(true);
+}
+
+let _auditDocTimer;
+document.getElementById('audit-doc-filter').addEventListener('input', () => {
+  clearTimeout(_auditDocTimer);
+  _auditDocTimer = setTimeout(auditReset, 400);
+});
+
+// ── Auth ──────────────────────────────────────────────────
+
+let currentAuthUser = null;
+
+async function checkAuth() {
+  try {
+    const resp = await fetch(RK_API + '/api/auth/me');
+    const data = await resp.json();
+    if (data.user) {
+      currentAuthUser = data.user;
+      updateUserUI();
+    }
+  } catch {}
+}
+
+function updateUserUI() {
+  if (currentAuthUser) {
+    document.getElementById('user-menu-label').textContent = currentAuthUser.display_name || currentAuthUser.email;
+    document.getElementById('user-menu-wrap').style.display = '';
+    if (currentAuthUser.is_root) {
+      document.getElementById('pw-change-btn').disabled = true;
+    }
+  }
+}
+
+async function doLogout() {
+  await fetch(RK_API + '/api/auth/logout', {method: 'POST'});
+  window.location.href = RK_API + '/login';
+}
+
+checkAuth();
+
+function togglePwChange() {
+  const form = document.getElementById('pw-change-form');
+  form.classList.toggle('open');
+  if (form.classList.contains('open')) {
+    document.getElementById('pw-current').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-msg').textContent = '';
+    document.getElementById('pw-current').focus();
+  }
+}
+
+async function submitPwChange() {
+  const current_password = document.getElementById('pw-current').value;
+  const new_password = document.getElementById('pw-new').value;
+  const msg = document.getElementById('pw-msg');
+  msg.textContent = ''; msg.className = 'pw-msg';
+  if (!current_password || !new_password) { msg.textContent = 'Both fields required'; msg.className = 'pw-msg error'; return; }
+  if (new_password.length < 6) { msg.textContent = 'Min 6 characters'; msg.className = 'pw-msg error'; return; }
+  const resp = await fetch(RK_API + '/api/auth/change-password', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({current_password, new_password}),
+  });
+  const data = await resp.json();
+  if (!resp.ok) { msg.textContent = data.error || 'Failed'; msg.className = 'pw-msg error'; return; }
+  msg.textContent = 'Password changed'; msg.className = 'pw-msg success';
+  document.getElementById('pw-current').value = '';
+  document.getElementById('pw-new').value = '';
+  setTimeout(() => { msg.textContent = ''; togglePwChange(); }, 2000);
+}
+
+function toggleAdminPwReset(id) {
+  const form = document.getElementById('admin-pw-' + id);
+  form.classList.toggle('open');
+  if (form.classList.contains('open')) {
+    document.getElementById('admin-pw-input-' + id).value = '';
+    document.getElementById('admin-pw-msg-' + id).textContent = '';
+    document.getElementById('admin-pw-input-' + id).focus();
+  }
+}
+
+async function submitAdminPwReset(id) {
+  const password = document.getElementById('admin-pw-input-' + id).value;
+  const msg = document.getElementById('admin-pw-msg-' + id);
+  msg.textContent = ''; msg.className = 'pw-msg';
+  if (!password || password.length < 6) { msg.textContent = 'Min 6 characters'; msg.className = 'pw-msg error'; return; }
+  const resp = await fetch(RK_API + '/api/admin/users/' + id + '/reset-password', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({password}),
+  });
+  const data = await resp.json();
+  if (!resp.ok) { msg.textContent = data.error || 'Failed'; msg.className = 'pw-msg error'; return; }
+  msg.textContent = 'Password reset'; msg.className = 'pw-msg success';
+  document.getElementById('admin-pw-input-' + id).value = '';
+  setTimeout(() => { msg.textContent = ''; toggleAdminPwReset(id); }, 2000);
+}
+
+// ── Admin ─────────────────────────────────────────────────
+
+let adminOpen = false;
+function toggleAdmin() {
+  adminOpen = !adminOpen;
+  document.getElementById('admin-panel').classList.toggle('active', adminOpen);
+  document.getElementById('admin-menu-btn').classList.toggle('active', adminOpen);
+  if (adminOpen) loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  const list = document.getElementById('admin-user-list');
+  list.innerHTML = '<div class="admin-empty">Loading…</div>';
+  try {
+    // Ensure roles are loaded first so dropdowns are correct
+    try {
+      const rr = await fetch(RK_API + '/api/admin/roles');
+      const rd = await rr.json();
+      if (rr.ok && rd.roles) { window._cachedRoles = rd.roles.map(r => r.name); populateRoleSelects(); }
+    } catch {}
+    const resp = await fetch(RK_API + '/api/admin/users');
+    const data = await resp.json();
+    if (!resp.ok) { list.innerHTML = `<div class="admin-empty">${escapeHtml(data.error || 'Failed')}</div>`; return; }
+    if (!data.users || data.users.length === 0) { list.innerHTML = '<div class="admin-empty">No users</div>'; return; }
+    list.innerHTML = data.users.map(u => {
+      const online = u.last_seen && (Date.now() - new Date(u.last_seen).getTime()) < 300000;
+      const lastLogin = u.last_login ? timeAgo(u.last_login) : 'never';
+      const roleOpts = (window._cachedRoles || ['admin','user']).map(r => `<option value="${r}"${r===u.role?' selected':''}>${r}</option>`).join('');
+      return `
+      <div class="admin-user-card" id="admin-user-${u.id}">
+        <div class="admin-user-info">
+          <div class="admin-user-name">${online ? '<i class="fa-solid fa-circle" style="font-size:7px;color:var(--operational-glow);margin-right:4px"></i>' : ''}${escapeHtml(u.display_name || u.email)}</div>
+          <div class="admin-user-email">${escapeHtml(u.email)} · login ${lastLogin}${u.created_at ? ' · joined ' + new Date(u.created_at).toLocaleDateString() : ''}</div>
+        </div>
+        <select class="admin-role-select" onchange="changeUserRole('${u.id}',this.value)" ${u.is_root ? 'disabled' : ''} style="background:#0d1117;border:1px solid var(--border-color);border-radius:5px;padding:3px 6px;color:var(--text-color);font-size:10px;font-family:inherit;outline:none;cursor:pointer">${roleOpts}</select>
+        <span class="admin-status-badge ${u.is_active !== false ? 'active' : 'inactive'}" id="status-${u.id}">${u.is_active !== false ? 'active' : 'inactive'}</span>
+        <div class="admin-user-actions">
+          <button id="resetpw-${u.id}" onclick="toggleAdminPwReset('${u.id}')" title="Reset password" ${u.is_root ? 'disabled' : ''}><i class="fa-solid fa-key"></i></button>
+          <button class="danger" id="toggle-${u.id}" onclick="toggleUserActive('${u.id}',${u.is_active !== false})" ${u.is_root ? 'disabled' : ''}>${u.is_active !== false ? 'Deactivate' : 'Activate'}</button>
+          <button class="danger" id="del-${u.id}" onclick="deleteUser('${u.id}')" ${u.is_active !== false || u.is_root ? 'disabled' : ''}><i class="fa-solid fa-trash-can"></i></button>
+        </div>
+      </div>
+      <div class="pw-change-form" id="admin-pw-${u.id}">
+        <input type="password" id="admin-pw-input-${u.id}" placeholder="New password">
+        <button class="save" onclick="submitAdminPwReset('${u.id}')"><i class="fa-solid fa-check"></i></button>
+        <button class="cancel" onclick="toggleAdminPwReset('${u.id}')"><i class="fa-solid fa-xmark"></i></button>
+        <div class="pw-msg" id="admin-pw-msg-${u.id}"></div>
+      </div>
+      </div>
+    `}).join('');
+  } catch { list.innerHTML = '<div class="admin-empty">Failed to load users</div>'; }
+}
+
+async function changeUserRole(id, newRole) {
+  await fetch(RK_API + '/api/admin/users/' + id, {
+    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role: newRole}),
+  });
+}
+
+async function deleteUser(id) {
+  const card = document.getElementById('admin-user-' + id);
+  const del = document.getElementById('del-' + id);
+  if (del) { del.disabled = true; del.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+  const resp = await fetch(RK_API + '/api/admin/users/' + id + '/delete', {method: 'DELETE'});
+  const data = await resp.json();
+  if (!resp.ok) {
+    if (del) { del.disabled = false; del.innerHTML = '<i class="fa-solid fa-trash-can"></i>'; }
+    if (card) {
+      const err = document.createElement('div');
+      err.style.cssText = 'font-size:10px;color:var(--critical-glow);padding:4px 0';
+      err.textContent = data.error || 'Failed';
+      card.appendChild(err);
+      setTimeout(() => err.remove(), 3000);
+    }
+    return;
+  }
+  if (card) { card.style.opacity = '0'; card.style.transition = 'opacity .3s'; setTimeout(() => card.remove(), 300); }
+}
+
+async function toggleUserActive(id, isActive) {
+  const btn = document.getElementById('toggle-' + id);
+  const badge = document.getElementById('status-' + id);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+  if (isActive) {
+    await fetch(RK_API + '/api/admin/users/' + id, {method: 'DELETE'});
+  } else {
+    await fetch(RK_API + '/api/admin/users/' + id, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({is_active: true}),
+    });
+  }
+  const newActive = !isActive;
+  if (badge) {
+    badge.className = 'admin-status-badge ' + (newActive ? 'active' : 'inactive');
+    badge.textContent = newActive ? 'active' : 'inactive';
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = newActive ? 'Deactivate' : 'Activate';
+    btn.setAttribute('onclick', `toggleUserActive('${id}',${newActive})`);
+  }
+  const del = document.getElementById('del-' + id);
+  if (del) del.disabled = newActive;
+}
+
+function showCreateUser() {
+  document.getElementById('admin-create-card').classList.add('open');
+  document.getElementById('new-user-email').value = '';
+  document.getElementById('new-user-name').value = '';
+  document.getElementById('new-user-pass').value = '';
+  document.getElementById('new-user-role').value = 'user';
+  document.getElementById('new-user-email').focus();
+}
+
+function hideCreateUser() {
+  document.getElementById('admin-create-card').classList.remove('open');
+}
+
+async function submitCreateUser() {
+  const email = document.getElementById('new-user-email').value.trim();
+  const password = document.getElementById('new-user-pass').value;
+  const display_name = document.getElementById('new-user-name').value.trim();
+  const role = document.getElementById('new-user-role').value;
+  if (!email || !password) return;
+  try {
+    const resp = await fetch(RK_API + '/api/admin/users', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password, display_name, role}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { alert(data.error || 'Failed'); return; }
+    hideCreateUser();
+    loadAdminUsers();
+  } catch { alert('Network error'); }
+}
+
+// ── Roles ─────────────────────────────────────────────────
+
+let rolesOpen = false;
+function toggleRoles() {
+  rolesOpen = !rolesOpen;
+  document.getElementById('roles-panel').classList.toggle('active', rolesOpen);
+  document.getElementById('roles-menu-btn').classList.toggle('active', rolesOpen);
+  if (rolesOpen) loadRoles();
+}
+
+window._cachedRoles = ['admin', 'user'];
+
+async function loadRoles() {
+  const list = document.getElementById('roles-list');
+  const createCard = document.getElementById('role-create-card');
+  try {
+    const resp = await fetch(RK_API + '/api/admin/roles');
+    const data = await resp.json();
+    if (!resp.ok) { list.innerHTML = createCard.outerHTML + `<div class="roles-empty">${escapeHtml(data.error || 'Failed')}</div>`; return; }
+    const roles = data.roles || [];
+    const allAttrs = data.available_attributes || [];
+    window._cachedRoles = roles.map(r => r.name);
+    populateRoleSelects();
+    let html = createCard.outerHTML;
+    roles.forEach(r => {
+      const isBuiltin = r.name === 'admin' || r.name === 'user';
+      const attrTags = allAttrs.map(a => {
+        const active = (r.attributes || []).includes(a);
+        return `<span class="role-attr-tag${active ? ' active' : ''}" data-role="${escapeHtml(r.name)}" data-attr="${escapeHtml(a)}" onclick="toggleRoleAttrLocal(this)">${a.replace('documentation:','')}</span>`;
+      }).join('');
+      html += `<div class="role-card" id="role-card-${escapeHtml(r.name)}">
+        <div class="role-card-header">
+          <span class="role-card-name">${escapeHtml(r.name)}</span>
+          ${isBuiltin ? '<span class="role-card-builtin">built-in</span>' : ''}
+          <div class="role-card-actions">
+            <button class="save-role" id="save-role-${escapeHtml(r.name)}" onclick="saveRole('${escapeHtml(r.name)}')"><i class="fa-solid fa-floppy-disk"></i></button>
+            ${!isBuiltin ? `<button class="danger" onclick="deleteRole('${escapeHtml(r.name)}')"><i class="fa-solid fa-trash-can"></i></button>` : ''}
+          </div>
+        </div>
+        <div class="role-attrs">${attrTags}</div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch { list.innerHTML = createCard.outerHTML + '<div class="roles-empty">Failed to load roles</div>'; }
+}
+
+function populateRoleSelects() {
+  document.querySelectorAll('.dynamic-role-select').forEach(sel => {
+    const current = sel.value;
+    sel.innerHTML = window._cachedRoles.map(r => `<option value="${r}"${r===current?' selected':''}>${r}</option>`).join('');
+  });
+}
+
+function toggleRoleAttrLocal(el) {
+  el.classList.toggle('active');
+  const saveBtn = document.getElementById('save-role-' + el.dataset.role);
+  if (saveBtn) saveBtn.classList.add('dirty');
+}
+
+async function saveRole(name) {
+  const tags = document.querySelectorAll(`.role-attr-tag[data-role="${name}"].active`);
+  const attrs = [...tags].map(t => t.dataset.attr);
+  const saveBtn = document.getElementById('save-role-' + name);
+  if (saveBtn) { saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; saveBtn.disabled = true; }
+  await fetch(RK_API + '/api/admin/roles/' + name, {
+    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({attributes: attrs}),
+  });
+  if (saveBtn) { saveBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; saveBtn.classList.remove('dirty'); saveBtn.disabled = false; }
+  setTimeout(() => { if (saveBtn) saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i>'; }, 1500);
+}
+
+async function deleteRole(name) {
+  if (!confirm('Delete role "' + name + '"?')) return;
+  const resp = await fetch(RK_API + '/api/admin/roles/' + name, {method: 'DELETE'});
+  const data = await resp.json();
+  if (!resp.ok) { alert(data.error || 'Failed'); return; }
+  loadRoles();
+}
+
+function showCreateRole() {
+  document.getElementById('role-create-card').classList.add('open');
+  document.getElementById('new-role-name').value = '';
+  document.getElementById('new-role-name').focus();
+}
+
+function hideCreateRole() {
+  document.getElementById('role-create-card').classList.remove('open');
+}
+
+async function submitCreateRole() {
+  const name = document.getElementById('new-role-name').value.trim();
+  if (!name) return;
+  const resp = await fetch(RK_API + '/api/admin/roles', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, attributes: []}),
+  });
+  const data = await resp.json();
+  if (!resp.ok) { alert(data.error || 'Failed'); return; }
+  hideCreateRole();
+  loadRoles();
+}
+
 // ── Upload ──────────────────────────────────────────
 
 let dragCounter = 0;
@@ -851,7 +1604,7 @@ function uploadFile(file) {
           pollIngestion(id, resp.ingestion_job_id);
         } else {
           setProgress(id, 95, 'syncing', 'Uploaded — sync skipped');
-          setTimeout(() => { setProgress(id, 100, 'done', 'Uploaded'); fadeUpload(id); if (RK_PERMS.view) loadDocuments(); }, 1000);
+          setTimeout(() => { setProgress(id, 100, 'done', 'Uploaded'); fadeUpload(id); if (RK_PERMS.view) loadDocuments(true); }, 1000);
         }
       } else {
         setProgress(id, 100, 'error', resp.error || `Upload failed (${xhr.status})`);
@@ -901,7 +1654,7 @@ function pollIngestion(uploadId, jobId) {
         } else {
           setProgress(uploadId, 100, 'done', msg); fadeUpload(uploadId);
         }
-        if (RK_PERMS.view) loadDocuments();
+        if (RK_PERMS.view) loadDocuments(true);
       } else if (data.status === 'FAILED') {
         clearInterval(poll);
         const reason = data.failure_reasons.length ? data.failure_reasons[0] : 'Ingestion failed';
@@ -1060,6 +1813,7 @@ function renderDocsPage() {
       <div class="doc-info">
         <div class="doc-name" title="${doc.key}">${doc.key}</div>
         <div class="doc-meta"><span class="doc-type-badge">${ext}</span>${doc.converted ? '<span class="doc-kb-badge converted"><i class="fa-solid fa-file-pdf"></i> PDF</span>' : ''}${doc.in_kb ? '<span class="doc-kb-badge in-kb"><i class="fa-solid fa-check"></i> KB</span>' : (RK_PERMS.retry ? `<span class="doc-kb-badge not-in-kb" title="Retry convert" onclick="retryConvert('${doc.key.replace(/'/g, "\\'")}')"><span class="default-label"><i class="fa-solid fa-xmark"></i> KB</span><span class="retry-label"><i class="fa-solid fa-arrow-rotate-right"></i> Retry</span></span>` : '<span class="doc-kb-badge not-in-kb"><i class="fa-solid fa-xmark"></i> KB</span>')}${formatSize(doc.size)} · ${timeAgo(doc.last_modified)}</div>
+        ${doc.uploaded_by ? `<div class="doc-uploader"><i class="fa-solid fa-user"></i>${escapeHtml(doc.uploaded_by)}${doc.uploaded_at ? ' · ' + new Date(doc.uploaded_at).toLocaleString() : ''}</div>` : ''}
       </div>
       <div class="doc-actions">
         <a class="doc-view" href="${doc.view_url}" target="_blank" rel="noopener" title="View"><i class="fa-solid fa-eye"></i></a>
@@ -1082,18 +1836,18 @@ function renderDocsPage() {
 
 function docsChangePage(dir) { docsPage += dir; renderDocsPage(); }
 
-async function loadDocuments() {
-  docsList.innerHTML = '<div class="docs-loading"><div class="docs-spinner"></div><span>Loading documents…</span></div>';
+async function loadDocuments(quiet) {
+  if (!quiet) docsList.innerHTML = '<div class="docs-loading"><div class="docs-spinner"></div><span>Loading documents…</span></div>';
   try {
     const resp = await fetch(RK_API + '/api/documents');
     const data = await resp.json();
     allDocs = data.documents || [];
     const totalSize = allDocs.reduce((a, d) => a + d.size, 0);
     docCount.innerHTML = `<span class="doc-stat"><i class="fa-solid fa-folder-open"></i> <span class="doc-stat-val">${allDocs.length}</span> document${allDocs.length === 1 ? '' : 's'}</span><span class="doc-stat-sep"></span><span class="doc-stat"><i class="fa-solid fa-hard-drive"></i> <span class="doc-stat-val">${formatSize(totalSize)}</span></span>`;
-    buildTypePills();
+    if (!quiet) buildTypePills();
     renderDocsPage();
   } catch {
-    docsList.innerHTML = '<div class="docs-empty"><i class="fa-solid fa-triangle-exclamation"></i> Failed to load</div>';
+    if (!quiet) docsList.innerHTML = '<div class="docs-empty"><i class="fa-solid fa-triangle-exclamation"></i> Failed to load</div>';
   }
 }
 
@@ -1103,7 +1857,10 @@ async function deleteDoc(key, btn) {
   btn.textContent = '…';
   try {
     const resp = await fetch(RK_API + '/api/documents/' + encodeURIComponent(key), {method: 'DELETE'});
-    if (resp.ok) loadDocuments();
+    if (resp.ok) {
+      allDocs = allDocs.filter(d => d.key !== key);
+      renderDocsPage();
+    }
   } catch {}
 }
 
@@ -1119,7 +1876,9 @@ async function retryConvert(key) {
     const resp = await fetch(RK_API + '/api/documents/' + encodeURIComponent(key) + '/retry', {method: 'POST'});
     const data = await resp.json();
     if (resp.ok) {
-      if (RK_PERMS.view) loadDocuments();
+      const doc = allDocs.find(d => d.key === key);
+      if (doc) { doc.in_kb = true; doc.kb_key = data.kb_key || doc.kb_key; }
+      renderDocsPage();
     } else {
       alert('Retry failed: ' + (data.error || 'Unknown error'));
       if (badge) { badge.classList.remove('retrying'); badge.innerHTML = '<span class="default-label"><i class="fa-solid fa-xmark"></i> KB</span><span class="retry-label"><i class="fa-solid fa-arrow-rotate-right"></i> Retry</span>'; }
@@ -1133,6 +1892,14 @@ async function retryConvert(key) {
 // ── Search ──────────────────────────────────────────
 
 queryInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !searchBtn.disabled) doSearch(); });
+queryInput.addEventListener('input', () => {
+  const hasText = queryInput.value.trim().length > 0;
+  const icon = document.getElementById('search-btn-icon');
+  if (!_searchActive) {
+    icon.className = hasText ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-up';
+    searchBtn.style.opacity = hasText ? '1' : '0.3';
+  }
+});
 
 const thinkingPanel = document.getElementById('search-thinking');
 const thinkingSteps = document.getElementById('thinking-steps');
@@ -1285,11 +2052,22 @@ function getActiveDocKeys() {
   return filtered.map(d => d.kb_key || d.key);
 }
 
+let _searchAbort = null;
+let _searchActive = false;
+
 async function doSearch() {
+  if (_searchActive) {
+    if (_searchAbort) _searchAbort.abort();
+    return;
+  }
   const q = queryInput.value.trim();
   if (!q) return;
 
-  searchBtn.disabled = true;
+  _searchAbort = new AbortController();
+  _searchActive = true;
+  const icon = document.getElementById('search-btn-icon');
+  icon.className = 'fa-solid fa-stop';
+  searchBtn.style.opacity = '1';
   results.innerHTML = '';
   thinkingSteps.innerHTML = '';
   thinkingPanel.classList.remove('collapsed', 'expanded');
@@ -1307,6 +2085,7 @@ async function doSearch() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
+      signal: _searchAbort.signal,
     });
 
     const reader = resp.body.getReader();
@@ -1318,7 +2097,6 @@ async function doSearch() {
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
 
-      // Parse SSE events from buffer
       let idx;
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
         const chunk = buffer.slice(0, idx);
@@ -1344,12 +2122,20 @@ async function doSearch() {
     }
 
     if (!results.innerHTML) results.innerHTML = '<div class="results-empty">No results found</div>';
-  } catch {
-    finishThinking();
-    results.innerHTML = '<div class="results-empty">Search failed — check server</div>';
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      addThinkingStep('Stopped by user');
+      finishThinking();
+    } else {
+      finishThinking();
+      results.innerHTML = '<div class="results-empty">Search failed \u2014 check server</div>';
+    }
   }
 
-  searchBtn.disabled = false;
+  _searchActive = false;
+  _searchAbort = null;
+  icon.className = 'fa-solid fa-arrow-up';
+  searchBtn.style.opacity = queryInput.value.trim() ? '1' : '0.3';
 }
 
 function renderMarkdown(text) {
@@ -1577,7 +2363,7 @@ async function removeOrphan(key) {
   if (!confirm('Remove orphan: ' + key + '?')) return;
   try {
     const resp = await fetch(RK_API + '/api/orphans/' + encodeURIComponent(key), {method: 'DELETE'});
-    if (resp.ok) { if (RK_PERMS.viewStats) loadStats(); if (RK_PERMS.view) loadDocuments(); }
+    if (resp.ok) { if (RK_PERMS.viewStats) loadStats(); if (RK_PERMS.view) loadDocuments(true); }
   } catch {}
 }
 
@@ -1615,6 +2401,17 @@ if (RK_PERMS.view) { loadDocuments(); }
   if (!RK_PERMS.viewStats) {
     hide(document.getElementById('sync-status-btn'));
   }
+  if (!RK_PERMS.viewAudit) {
+    hide(document.getElementById('audit-menu-btn'));
+    hide(document.getElementById('audit-tab-btn'));
+    hide(document.getElementById('audit-panel'));
+  }
+  if (!RK_PERMS.adminUsers) {
+    hide(document.getElementById('admin-menu-btn'));
+    hide(document.getElementById('admin-panel'));
+    hide(document.getElementById('roles-menu-btn'));
+    hide(document.getElementById('roles-panel'));
+  }
 })();
 
 // Populate drop overlay extensions
@@ -1626,10 +2423,11 @@ const syncDetailsPanel = document.getElementById('sync-details-panel');
 const syncStatusBtn = document.getElementById('sync-status-btn');
 const infoPanel = document.getElementById('info-panel');
 const infoBtn = document.getElementById('info-btn');
+const userMenuPanel = document.getElementById('user-menu-panel');
 
 let panelTimers = {};
 function closeAllPanels() {
-  [uploadExtsPanel, syncDetailsPanel, infoPanel, settingsPanel].forEach(p => p.classList.remove('open'));
+  [uploadExtsPanel, syncDetailsPanel, infoPanel, settingsPanel, userMenuPanel].forEach(p => p.classList.remove('open'));
   Object.keys(panelTimers).forEach(k => { clearTimeout(panelTimers[k]); delete panelTimers[k]; });
 }
 function showPanel(panel, key) {
@@ -1661,6 +2459,15 @@ settingsBtn.addEventListener('mouseenter', () => showPanel(settingsPanel, 'setti
 settingsBtn.addEventListener('mouseleave', () => scheduleHide(settingsPanel, 'settings'));
 settingsPanel.addEventListener('mouseenter', () => cancelHide('settings'));
 settingsPanel.addEventListener('mouseleave', () => scheduleHide(settingsPanel, 'settings'));
+
+const userMenuBtn = document.getElementById('user-menu-btn');
+function isAnyChildPanelOpen() {
+  return auditOpen || adminOpen || rolesOpen;
+}
+userMenuBtn.addEventListener('mouseenter', () => showPanel(userMenuPanel, 'usermenu'));
+userMenuBtn.addEventListener('mouseleave', () => { if (!isAnyChildPanelOpen()) scheduleHide(userMenuPanel, 'usermenu'); });
+userMenuPanel.addEventListener('mouseenter', () => cancelHide('usermenu'));
+userMenuPanel.addEventListener('mouseleave', () => { if (!isAnyChildPanelOpen()) scheduleHide(userMenuPanel, 'usermenu'); });
 
 const uploadExtsList = document.getElementById('upload-exts-list');
 fileInput.getAttribute('accept').split(',').forEach(e => {
